@@ -1,7 +1,12 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+/frontend/node_modules
+/frontend/.next
+/frontend/out
+/backend/.venv
+/backend/.env
+**/__pycache__/
 /.pnp
 .pnp.*
 .yarn/*
@@ -14,9 +19,6 @@
 /coverage
 
 # next.js
-/.next/
-/out/
-
 # production
 /build
 
