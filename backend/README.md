@@ -10,7 +10,7 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-The backend reads `DATABASE_URL` from the root `.env` file. Copy `backend/.env.example` to `backend/.env` only if you need backend-specific values.
+The backend reads `DATABASE_URL` from the root `.env` file when it is set. Without it, local development uses `backend/db.sqlite3`; this file is ignored by Git. Set `DATABASE_URL` to your PostgreSQL URL for production or shared environments. Copy `backend/.env.example` to `backend/.env` only if you need backend-specific values.
 
 ## Run
 

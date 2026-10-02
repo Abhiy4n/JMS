@@ -4,7 +4,7 @@ This project has two services:
 
 - **Frontend:** Next.js at `http://localhost:3000`
 - **Backend:** Django API at `http://localhost:8000`
-- **Database:** PostgreSQL
+- **Database:** SQLite by default for local development; PostgreSQL when `DATABASE_URL` is configured
 
 ## Run the Application
 
@@ -31,7 +31,7 @@ Open the frontend at `http://localhost:3000`.
 
 ## Prerequisites
 
-Install Node.js, npm, Python, PostgreSQL, and Git. Check the installed versions:
+Install Node.js, npm, Python, and Git. PostgreSQL is optional for local development, but required when using a PostgreSQL `DATABASE_URL`. Check the installed versions:
 
 ```bash
 node -v
@@ -52,13 +52,13 @@ git checkout <branch-name>
 
 ## Environment Configuration
 
-Create a root `.env` file:
+To use PostgreSQL, create a root `.env` file:
 
 ```env
 DATABASE_URL="postgresql://username:password@localhost:5432/jms"
 ```
 
-The Django backend reads this root `.env` file automatically. Do not commit it. The file is excluded by `.gitignore`.
+The Django backend reads this root `.env` file automatically. Without `DATABASE_URL`, it uses the ignored local database file `backend/db.sqlite3`. Do not commit `.env` files.
 
 Optional backend settings can be placed in `backend/.env`, using `backend/.env.example` as a template:
 
@@ -71,7 +71,7 @@ CORS_ALLOWED_ORIGINS="http://localhost:3000"
 
 ## PostgreSQL
 
-Make sure PostgreSQL is running and create the project database:
+When using PostgreSQL, make sure it is running and create the project database:
 
 ```text
 Database: jms
@@ -135,7 +135,8 @@ Commit the generated migration files. Django migrations are the only database mi
 git clone <repository-url>
 cd <project-folder>
 
-# Create .env and add DATABASE_URL
+# Optionally create .env and set DATABASE_URL to use PostgreSQL.
+# Without it, local development uses backend/db.sqlite3.
 
 cd backend
 python3 -m venv .venv
