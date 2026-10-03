@@ -10,7 +10,8 @@ The app uses one canonical relationship: a business source has many customers, a
 
 - **Create a business source:** On `/dashboard`, choose **New Business Source**, enter the source name and channel, then add its first customer. The backend saves the source and first customer in one database transaction. If either insert fails, neither record is kept.
 - **Open a source:** Select a source name to open `/business-sources/<id>`. The page lists each customer linked to that source, including their individual contact details.
-- **Create a customer:** On `/customers`, choose **New Customer**, enter their details, and select a business source. The customer's row appears in the directory and the source's customer count/detail page immediately reflects it.
+- **Create a customer:** On `/customers`, choose **New Customer**, enter their details, then select either an existing source or **New source category**. A new category and its customer are saved together.
+- **Add a customer from a source:** Use **Add customer** on a source row or its detail page. The dialog opens with that source selected, and can still be switched to a new category.
 - **Search and filter:** The customer directory searches names, phone numbers, email addresses, and source names. It can also be filtered by source. The source register searches source names and channel types.
 
 ## Data model
@@ -29,7 +30,7 @@ These endpoints require the same JWT bearer token as the rest of the authenticat
 | `POST` | `/api/business-sources/` | Create a source and its first customer atomically |
 | `GET` | `/api/business-sources/<id>/` | Read one source and its live customer count |
 | `GET` | `/api/customers/?search=<text>&business_source=<id>` | List/search customers, optionally by source |
-| `POST` | `/api/customers/` | Create a customer linked to an existing source |
+| `POST` | `/api/customers/` | Create a customer linked to an existing source or new category |
 
 Example source creation body:
 
@@ -57,6 +58,21 @@ Example customer creation body:
 }
 ```
 
+To create a new source category and its customer in one request, send `new_business_source` instead of `business_source`:
+
+```json
+{
+  "name": "Mina Karki",
+  "phone": "9822222222",
+  "email": "mina@example.com",
+  "new_business_source": {
+    "name": "Instagram Campaign",
+    "channel_type": "MARKETING",
+    "description": "Spring campaign"
+  }
+}
+```
+
 ## Billing columns
 
 The reference includes bill count, revenue, collected, and outstanding columns, but this project does not yet have invoice or payment models. Those cells therefore display an em dash with a short explanation instead of invented zero values. Once invoice/payment records exist, aggregate them by customer and then by business source.
@@ -70,7 +86,7 @@ cd backend
 python manage.py migrate
 ```
 
-For the default local configuration, PostgreSQL must be available at the `DATABASE_URL` in `backend/config/settings.py`. Set `DATABASE_URL` in the environment to use another supported database.
+Local development defaults to persistent SQLite at `backend/db.sqlite3`. Set `DATABASE_URL` to PostgreSQL for production or shared environments.
 
 ## Code map
 
@@ -95,4 +111,4 @@ npm ci
 npm run dev
 ```
 
-The current workspace did not have Node.js/npm or `frontend/node_modules`, so a Next.js build could not be run in this environment. The supplied `package-lock.json` already lists React and its type packages; `npm ci` is needed before the editor can resolve JSX runtime/types.
+The supplied `package-lock.json` contains React and its type packages; `npm ci` restores them before running the app or checking JSX types.

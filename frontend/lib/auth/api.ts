@@ -1,3 +1,5 @@
+import { clearSession, getRefreshToken, updateAccessToken } from "./storage";
+
 export type AuthUser = {
   id: number;
   name: string;
@@ -26,9 +28,20 @@ export class ApiError extends Error {
   }
 }
 
-function formatDrfError(data: unknown): string {
+function formatDrfError(data: unknown, prefix = ""): string {
+  if (typeof data === "string") {
+    return prefix ? `${prefix}: ${data}` : data;
+  }
+
+  if (Array.isArray(data)) {
+    return data
+      .map((item) => formatDrfError(item, prefix))
+      .filter(Boolean)
+      .join(" ");
+  }
+
   if (!data || typeof data !== "object") {
-    return "Something went wrong. Please try again.";
+    return "";
   }
 
   const record = data as Record<string, unknown>;
@@ -37,31 +50,27 @@ function formatDrfError(data: unknown): string {
     return record.detail;
   }
 
-  const parts: string[] = [];
-  for (const [key, value] of Object.entries(record)) {
-    if (Array.isArray(value)) {
-      parts.push(
-        ...value.map((item) =>
-          typeof item === "string" ? item : JSON.stringify(item)
-        )
-      );
-    } else if (typeof value === "string") {
-      parts.push(key === "non_field_errors" ? value : `${key}: ${value}`);
-    }
-  }
+  const parts = Object.entries(record).map(([key, value]) => {
+    const field = key === "non_field_errors"
+      ? prefix
+      : [prefix, key].filter(Boolean).join(".");
+    return formatDrfError(value, field);
+  });
 
-  return parts.join(" ") || "Something went wrong. Please try again.";
+  return parts.filter(Boolean).join(" ");
 }
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
   "http://localhost:8000";
 
-export async function apiRequest<T>(
+let refreshInFlight: Promise<string> | null = null;
+
+function sendRequest(
   path: string,
-  options: RequestInit = {},
+  options: RequestInit,
   accessToken?: string | null
-): Promise<T> {
+) {
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type") && options.body) {
     headers.set("Content-Type", "application/json");
@@ -70,23 +79,75 @@ export async function apiRequest<T>(
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  return fetch(`${API_URL}${path}`, { ...options, headers });
+}
 
+async function parseResponse(response: Response) {
   const text = await response.text();
-  let data: unknown = null;
-  if (text) {
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+function getRenewedAccessToken() {
+  if (!refreshInFlight) {
+    const refresh = getRefreshToken();
+    if (!refresh) return Promise.reject(new Error("No refresh token is available."));
+
+    // Reuse one refresh request when several API calls fail at the same time.
+    refreshInFlight = refreshAccessToken(refresh)
+      .then(({ access }) => {
+        updateAccessToken(access);
+        return access;
+      })
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
+function expireSession() {
+  clearSession();
+  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+    window.location.replace("/login");
+  }
+}
+
+export async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  accessToken?: string | null
+): Promise<T> {
+  let response = await sendRequest(path, options, accessToken);
+
+  if (response.status === 401 && accessToken) {
     try {
-      data = JSON.parse(text);
+      const renewedAccess = await getRenewedAccessToken();
+      response = await sendRequest(path, options, renewedAccess);
     } catch {
-      data = text;
+      expireSession();
+      throw new ApiError("Your session has expired. Please log in again.", 401);
+    }
+
+    if (response.status === 401) {
+      const data = await parseResponse(response);
+      expireSession();
+      throw new ApiError("Your session has expired. Please log in again.", 401, data);
     }
   }
 
+  const data = await parseResponse(response);
   if (!response.ok) {
-    throw new ApiError(formatDrfError(data), response.status, data);
+    throw new ApiError(
+      formatDrfError(data) || "Something went wrong. Please try again.",
+      response.status,
+      data
+    );
   }
 
   return data as T;

@@ -4,12 +4,14 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
+import CustomerDialog from "@/components/CustomerDialog";
 import {
   CHANNEL_TYPES,
   type BusinessSource,
   type ChannelType,
   createBusinessSource,
   fetchBusinessSources,
+  isValidContactEmail,
 } from "@/lib/business-data";
 
 const CHANNEL_LABELS: Record<ChannelType, string> = {
@@ -28,6 +30,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [customerDialogSourceId, setCustomerDialogSourceId] = useState<number>();
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -102,14 +105,15 @@ export default function DashboardPage() {
               <th scope="col">Collected</th>
               <th scope="col">Outstanding</th>
               <th scope="col">Status</th>
+              <th scope="col"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="table-message">Loading business sources...</td></tr>
+              <tr><td colSpan={9} className="table-message">Loading business sources...</td></tr>
             ) : sources.length === 0 ? (
               <tr>
-                <td colSpan={8} className="table-message empty-message">
+                <td colSpan={9} className="table-message empty-message">
                   <strong>{search ? "No matching sources" : "No business sources yet"}</strong>
                   <span>{search ? "Try another source name or channel." : "Create a source and its first customer to get started."}</span>
                 </td>
@@ -136,6 +140,15 @@ export default function DashboardPage() {
                     {source.status}
                   </span>
                 </td>
+                <td>
+                  <button
+                    className="table-action"
+                    type="button"
+                    onClick={() => setCustomerDialogSourceId(source.id)}
+                  >
+                    Add customer
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -150,6 +163,17 @@ export default function DashboardPage() {
           onClose={() => setDialogOpen(false)}
           onCreated={() => {
             setDialogOpen(false);
+            setReloadKey((key) => key + 1);
+          }}
+        />
+      )}
+      {customerDialogSourceId !== undefined && (
+        <CustomerDialog
+          sources={sources}
+          initialSourceId={customerDialogSourceId}
+          onClose={() => setCustomerDialogSourceId(undefined)}
+          onCreated={() => {
+            setCustomerDialogSourceId(undefined);
             setReloadKey((key) => key + 1);
           }}
         />
@@ -242,11 +266,14 @@ function NewSourceDialog({
           <div className="form-grid">
             <label className="form-field">
               <span>Phone</span>
-              <input type="tel" maxLength={32} value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} autoComplete="tel" />
+              <input type="tel" inputMode="numeric" pattern="[0-9]{9,10}" maxLength={10} value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value.replace(/[^0-9]/g, "").slice(0, 10))} autoComplete="tel" title="Enter 9 or 10 digits." />
             </label>
             <label className="form-field">
               <span>Email</span>
-              <input type="email" value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)} autoComplete="email" />
+              <input type="email" value={customerEmail} onChange={(event) => {
+                setCustomerEmail(event.target.value);
+                event.currentTarget.setCustomValidity(isValidContactEmail(event.target.value) ? "" : "Use a valid email address with a recognized domain such as .com or .np.");
+              }} autoComplete="email" />
             </label>
           </div>
           {error && <p className="notice notice-error" role="alert">{error}</p>}

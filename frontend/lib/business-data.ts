@@ -11,6 +11,30 @@ export const CHANNEL_TYPES = [
   "OTHER",
 ] as const;
 
+const ALLOWED_EMAIL_SUFFIXES = new Set([
+  "com",
+  "org",
+  "net",
+  "edu",
+  "gov",
+  "mil",
+  "int",
+  "np",
+  "co",
+  "io",
+  "me",
+  "info",
+]);
+
+export function isValidContactEmail(value: string) {
+  const email = value.trim();
+  if (!email) return true;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+
+  const suffix = email.slice(email.lastIndexOf(".") + 1).toLowerCase();
+  return ALLOWED_EMAIL_SUFFIXES.has(suffix);
+}
+
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 export type SourceStatus = "ACTIVE" | "INACTIVE";
 
@@ -34,18 +58,34 @@ export type Customer = {
   created_at: string;
 };
 
-export type NewCustomer = {
+export type CustomerDetails = {
   name: string;
   phone: string;
   email: string;
-  business_source: number;
 };
+
+export type NewSourceCategory = {
+  name: string;
+  channel_type: ChannelType;
+  description: string;
+};
+
+export type NewCustomer = CustomerDetails & (
+  | {
+      business_source: number;
+      new_business_source?: never;
+    }
+  | {
+      business_source?: never;
+      new_business_source: NewSourceCategory;
+    }
+);
 
 export type NewBusinessSource = {
   name: string;
   channel_type: ChannelType;
   description: string;
-  first_customer: Pick<NewCustomer, "name" | "phone" | "email">;
+  first_customer: CustomerDetails;
 };
 
 function withSearch(path: string, search: string) {

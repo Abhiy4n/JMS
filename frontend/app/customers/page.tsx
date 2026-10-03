@@ -1,14 +1,14 @@
 "use client";
 
-import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
+import CustomerDialog from "@/components/CustomerDialog";
 import {
   type BusinessSource,
   type Customer,
-  createCustomer,
   fetchBusinessSources,
   fetchCustomers,
 } from "@/lib/business-data";
@@ -68,7 +68,7 @@ function CustomersDirectory() {
           <h1>Customers</h1>
           <p className="page-description">Customer records stay connected to the source that brought them in.</p>
         </div>
-        <button className="button button-primary" onClick={() => setDialogOpen(true)} disabled={sources.length === 0}>
+        <button className="button button-primary" onClick={() => setDialogOpen(true)}>
           <span aria-hidden="true">+</span>
           New Customer
         </button>
@@ -76,7 +76,8 @@ function CustomersDirectory() {
 
       {sources.length === 0 && !error && (
         <p className="notice notice-info">
-          Create a business source before adding customers. <Link href="/dashboard">Go to Business Sources</Link>
+          No source categories yet. You can add a customer here and create its new source category in the same form.
+          {" "}<Link href="/dashboard">Open Business Sources</Link>
         </p>
       )}
 
@@ -150,8 +151,9 @@ function CustomersDirectory() {
       </div>
 
       {dialogOpen && (
-        <NewCustomerDialog
+        <CustomerDialog
           sources={sources}
+          initialSourceId={sourceFilter ? Number(sourceFilter) : undefined}
           onClose={() => setDialogOpen(false)}
           onCreated={() => {
             setDialogOpen(false);
@@ -161,84 +163,5 @@ function CustomersDirectory() {
         />
       )}
     </BusinessAppShell>
-  );
-}
-
-function NewCustomerDialog({
-  sources,
-  onClose,
-  onCreated,
-}: {
-  sources: BusinessSource[];
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [sourceId, setSourceId] = useState(String(sources[0]?.id ?? ""));
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    setError("");
-    try {
-      await createCustomer({
-        name: name.trim(),
-        phone: phone.trim(),
-        email: email.trim(),
-        business_source: Number(sourceId),
-      });
-      onCreated();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not create the customer.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="customer-dialog-title">
-        <div className="modal-heading">
-          <div>
-            <p className="eyebrow">NEW RECORD</p>
-            <h2 id="customer-dialog-title">Add customer</h2>
-          </div>
-          <button className="icon-button" type="button" aria-label="Close dialog" onClick={onClose}>×</button>
-        </div>
-        <form className="form-stack" onSubmit={handleSubmit}>
-          <label className="form-field">
-            <span>Customer name <b>*</b></span>
-            <input required maxLength={255} value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
-          </label>
-          <div className="form-grid">
-            <label className="form-field">
-              <span>Phone</span>
-              <input type="tel" maxLength={32} value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" />
-            </label>
-            <label className="form-field">
-              <span>Email</span>
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
-            </label>
-          </div>
-          <label className="form-field">
-            <span>Business source <b>*</b></span>
-            <select required value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
-              {sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
-            </select>
-          </label>
-          {error && <p className="notice notice-error" role="alert">{error}</p>}
-          <div className="modal-actions">
-            <button className="button button-secondary" type="button" onClick={onClose}>Cancel</button>
-            <button className="button button-primary" type="submit" disabled={submitting || !sourceId}>
-              {submitting ? "Saving..." : "Save customer"}
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
   );
 }

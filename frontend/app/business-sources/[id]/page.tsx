@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
+import CustomerDialog from "@/components/CustomerDialog";
 import { type BusinessSource, type Customer, fetchBusinessSource, fetchCustomers } from "@/lib/business-data";
 
 export default function BusinessSourceDetailPage() {
@@ -14,6 +15,8 @@ export default function BusinessSourceDetailPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let current = true;
@@ -38,7 +41,7 @@ export default function BusinessSourceDetailPage() {
         if (current) setLoading(false);
       });
     return () => { current = false; };
-  }, [sourceId]);
+  }, [sourceId, reloadKey]);
 
   return (
     <BusinessAppShell>
@@ -57,7 +60,12 @@ export default function BusinessSourceDetailPage() {
               <h1>{source.name}</h1>
               <p className="page-description">{source.description || "Customers connected to this acquisition source."}</p>
             </div>
-            <span className={`status-badge status-${source.status.toLowerCase()}`}>{source.status}</span>
+            <div className="detail-actions">
+              <span className={`status-badge status-${source.status.toLowerCase()}`}>{source.status}</span>
+              <button className="button button-primary" type="button" onClick={() => setCustomerDialogOpen(true)}>
+                <span aria-hidden="true">+</span> Add customer
+              </button>
+            </div>
           </section>
 
           <div className="detail-summary">
@@ -87,6 +95,17 @@ export default function BusinessSourceDetailPage() {
             </table>
           </div>
         </>
+      )}
+      {customerDialogOpen && source && (
+        <CustomerDialog
+          sources={[source]}
+          initialSourceId={source.id}
+          onClose={() => setCustomerDialogOpen(false)}
+          onCreated={() => {
+            setCustomerDialogOpen(false);
+            setReloadKey((key) => key + 1);
+          }}
+        />
       )}
     </BusinessAppShell>
   );
