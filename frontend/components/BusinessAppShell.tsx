@@ -10,6 +10,7 @@ import type { AuthUser } from "@/lib/auth/api";
 const primaryNavigation = [
   { label: "Customers", href: "/customers", icon: "♙" },
   { label: "Business Sources", href: "/dashboard", icon: "▤" },
+  { label: "Bills", href: "/bills", icon: "▧" },
 ];
 
 export default function BusinessAppShell({ children }: { children: ReactNode }) {
@@ -73,7 +74,7 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
           </span>
         </Link>
 
-        <div className="sidebar-section-label">BULLION &amp; CHANNELS</div>
+        <div className="sidebar-section-label">OPERATIONS</div>
         <nav aria-label="Main navigation" className="sidebar-navigation">
           {primaryNavigation.map(({ label, href, icon }) => {
             const active =
