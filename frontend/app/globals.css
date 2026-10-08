@@ -935,6 +935,267 @@ textarea:focus-visible {
   min-width: 1050px;
 }
 
+.pledge-table {
+  min-width: 1120px;
+}
+
+.pledge-number-cell {
+  font-weight: 700;
+}
+
+.pledge-amount-cell {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.status-redeemed {
+  color: #27628f;
+  background: #e5f2fb;
+}
+
+.pledge-overdue-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 0 9px;
+  border-radius: 12px;
+  color: #a72e32;
+  background: var(--red-wash);
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.pledge-not-overdue {
+  color: #8491a3;
+}
+
+.pledge-error-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pledge-error-row .notice {
+  flex: 1;
+}
+
+.pledge-toolbar {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.pledge-filters {
+  flex-wrap: wrap;
+}
+
+.pledge-search {
+  min-width: 220px;
+}
+
+.pledge-date-filter input {
+  width: 145px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #526176;
+  background: #fff;
+  font-size: 12px;
+}
+
+.pledge-view-panel {
+  width: min(100%, 690px);
+}
+
+.pledge-view-grid,
+.pledge-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  margin: 22px 0;
+}
+
+.pledge-view-grid div,
+.pledge-summary-grid div {
+  min-width: 0;
+}
+
+.pledge-view-grid dt,
+.pledge-summary-grid dt {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pledge-view-grid dd,
+.pledge-summary-grid dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.pledge-view-items-title {
+  margin: 20px 0 9px;
+  color: #34445a;
+  font-size: 13px;
+}
+
+.pledge-view-items {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pledge-view-items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #34445a;
+  font-size: 12px;
+}
+
+.pledge-view-items li span:last-child {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.pledge-create-form {
+  display: grid;
+  gap: 22px;
+}
+
+.pledge-form-section,
+.pledge-summary-section {
+  min-width: 0;
+  padding: 0 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pledge-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pledge-section-heading .eyebrow,
+.pledge-summary-section .eyebrow {
+  margin-bottom: 4px;
+}
+
+.pledge-section-heading h2,
+.pledge-summary-section h2 {
+  margin: 0;
+  color: #233149;
+  font-size: 16px;
+  font-weight: 730;
+}
+
+.pledge-section-description {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pledge-info-grid {
+  row-gap: 16px;
+}
+
+.pledge-field-hint {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 450;
+}
+
+.pledge-money-input {
+  display: flex;
+  align-items: center;
+  min-height: 39px;
+  padding: 0 10px;
+  border: 1px solid #d8e0ea;
+  border-radius: 5px;
+  color: #66758a;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.pledge-money-input:focus-within {
+  outline: 3px solid #8db0ff;
+  outline-offset: 2px;
+}
+
+.pledge-money-input input {
+  min-width: 0;
+  min-height: 35px;
+  padding: 6px 0 6px 8px;
+  border: 0;
+  outline: 0;
+  text-align: right;
+}
+
+.pledge-item-list {
+  display: grid;
+  gap: 12px;
+}
+
+.pledge-item-editor {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.pledge-item-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(130px, 1fr) minmax(110px, .7fr);
+  gap: 13px 11px;
+}
+
+.pledge-description-field {
+  min-width: 0;
+}
+
+.pledge-item-grid .form-field > span small {
+  margin-left: 5px;
+  color: #7b8798;
+  font-size: 10px;
+  font-weight: 550;
+}
+
+.pledge-add-item {
+  margin-top: 12px;
+}
+
+.pledge-summary-section {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.pledge-summary-grid {
+  margin-bottom: 0;
+}
+
+.pledge-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .bill-row-actions,
 .bill-detail-actions {
   display: flex;
@@ -1991,6 +2252,14 @@ textarea:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .pledge-toolbar {
+    align-items: stretch;
+  }
+
+  .pledge-filters {
+    justify-content: flex-start;
+  }
+
   .bill-item-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2179,6 +2448,33 @@ textarea:focus-visible {
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pledge-error-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pledge-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pledge-description-field {
+    grid-column: 1 / -1;
+  }
+
+  .pledge-form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .pledge-form-actions > .button {
+    width: 100%;
+  }
+
+  .pledge-view-items li {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .source-account-cards {

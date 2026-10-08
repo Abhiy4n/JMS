@@ -117,11 +117,18 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
           </div>
           <div className="sidebar-group-label sidebar-group-spaced">Pledge Management</div>
           <div className="sidebar-subnavigation">
-            <div className="sidebar-link sidebar-link-placeholder" aria-disabled="true">
+            <Link
+              href="/pledges"
+              onClick={() => setMenuOpen(false)}
+              className={`sidebar-link ${pathname === "/pledges" || pathname.startsWith("/pledges/") ? "sidebar-link-active" : ""}`}
+              aria-current={pathname === "/pledges" || pathname.startsWith("/pledges/") ? "page" : undefined}
+            >
               <span className="nav-glyph" aria-hidden="true">◇</span>
               <span>Pledge Records</span>
-              <span className="sidebar-coming-soon">Coming soon</span>
-            </div>
+              {(pathname === "/pledges" || pathname.startsWith("/pledges/")) && (
+                <span className="active-dot" aria-hidden="true" />
+              )}
+            </Link>
             <div className="sidebar-link sidebar-link-placeholder" aria-disabled="true">
               <span className="nav-glyph" aria-hidden="true">▧</span>
               <span>Official Forms</span>
