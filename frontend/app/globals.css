@@ -162,6 +162,53 @@ textarea:focus-visible {
   gap: 5px;
 }
 
+.sidebar-transactions-label {
+  margin-top: 23px;
+  margin-bottom: 3px;
+}
+
+.sidebar-group-label {
+  padding: 7px 12px 3px;
+  color: #d5deeb;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sidebar-group-spaced {
+  margin-top: 8px;
+}
+
+.sidebar-subnavigation {
+  display: grid;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+.sidebar-subnavigation .sidebar-link {
+  min-height: 38px;
+  gap: 8px;
+  padding-right: 8px;
+  padding-left: 8px;
+  font-size: 12px;
+}
+
+.sidebar-subnavigation .sidebar-link-active:has(.active-dot) {
+  padding-left: 25px;
+}
+
+.sidebar-link-placeholder {
+  color: #9caecb;
+  cursor: default;
+}
+
+.sidebar-coming-soon {
+  margin-left: auto;
+  color: #8190a8;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .nav-glyph {
   display: inline-grid;
   flex: 0 0 19px;

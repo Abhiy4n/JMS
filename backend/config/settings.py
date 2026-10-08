@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     "accounts",
     "api",
     "billing",
+    "pledges",
 ]
 
 MIDDLEWARE = [
