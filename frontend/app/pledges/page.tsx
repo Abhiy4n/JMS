@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { Eye, Plus, RotateCcw, X } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { Eye, Plus, RotateCcw } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
 import {
@@ -46,23 +46,28 @@ export default function PledgesPage() {
 }
 
 function PledgeRecords() {
+  const visitKey = useRouter().bfcacheId;
   const searchParams = useSearchParams();
   const created = searchParams.get("created") === "1";
-  const [pledges, setPledges] = useState<Pledge[]>([]);
+  const [result, setResult] = useState<{ key: string; pledges: Pledge[]; error: string } | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<PledgeStatus | "">("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
-  const [selectedPledge, setSelectedPledge] = useState<Pledge | null>(null);
+  const dateRangeError = dateFrom && dateTo && dateFrom > dateTo
+    ? "Pledge date to must be on or after pledge date from."
+    : "";
+  const requestKey = JSON.stringify([search, status, dateFrom, dateTo, reloadKey, visitKey]);
+  const currentResult = result?.key === requestKey && !dateRangeError ? result : null;
+  const pledges = currentResult?.pledges ?? [];
+  const loading = !dateRangeError && !currentResult;
+  const error = currentResult?.error ?? "";
 
   useEffect(() => {
     let current = true;
+    if (dateRangeError) return;
     const timer = window.setTimeout(() => {
-      setLoading(true);
-      setError("");
       fetchPledges({
         search,
         status: status || undefined,
@@ -70,16 +75,12 @@ function PledgeRecords() {
         date_to: dateTo || undefined,
       })
         .then((data) => {
-          if (current) setPledges(data);
+          if (current) setResult({ key: requestKey, pledges: data, error: "" });
         })
         .catch((requestError: unknown) => {
           if (current) {
-            setPledges([]);
-            setError(userFacingError(requestError, "Could not load Pledge records. Please try again."));
+            setResult({ key: requestKey, pledges: [], error: userFacingError(requestError, "Could not load Pledge records. Please try again.") });
           }
-        })
-        .finally(() => {
-          if (current) setLoading(false);
         });
     }, 200);
 
@@ -87,18 +88,7 @@ function PledgeRecords() {
       current = false;
       window.clearTimeout(timer);
     };
-  }, [search, status, dateFrom, dateTo, reloadKey]);
-
-  useEffect(() => {
-    if (!selectedPledge) return;
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setSelectedPledge(null);
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [selectedPledge]);
+  }, [search, status, dateFrom, dateTo, dateRangeError, requestKey]);
 
   const hasFilters = Boolean(search.trim() || status || dateFrom || dateTo);
 
@@ -115,12 +105,15 @@ function PledgeRecords() {
         <div>
           <p className="eyebrow">PLEDGE MANAGEMENT</p>
           <h1>Pledge Records</h1>
-          <p className="page-description">Manage customer pledge and collateral records.</p>
+          <p className="page-description">Find, create, and manage individual pledge records.</p>
         </div>
-        <Link className="button button-primary" href="/pledges/new">
-          <Plus size={16} aria-hidden="true" />
-          Create Pledge
-        </Link>
+        <div className="pledge-detail-actions">
+          <Link className="button button-secondary" href="/pledges/report">Customer-wise Report</Link>
+          <Link className="button button-primary" href="/pledges/new">
+            <Plus size={16} aria-hidden="true" />
+            Create Pledge
+          </Link>
+        </div>
       </section>
 
       {created && <p className="notice notice-success" role="status">Pledge created successfully.</p>}
@@ -141,7 +134,7 @@ function PledgeRecords() {
       <div className="table-toolbar pledge-toolbar">
         <div className="table-title-group">
           <h2>All Pledge records</h2>
-          <span className="record-count">{pledges.length}</span>
+          {currentResult && !error && <span className="record-count">{pledges.length}</span>}
         </div>
         <div className="table-filters pledge-filters">
           <label className="local-search pledge-search">
@@ -183,6 +176,8 @@ function PledgeRecords() {
               type="date"
               value={dateTo}
               min={dateFrom || undefined}
+              aria-invalid={Boolean(dateRangeError)}
+              aria-describedby={dateRangeError ? "pledge-records-date-error" : undefined}
               onChange={(event) => setDateTo(event.target.value)}
             />
           </label>
@@ -197,8 +192,9 @@ function PledgeRecords() {
           </button>
         </div>
       </div>
+      {dateRangeError && <p id="pledge-records-date-error" className="notice notice-error" role="alert">{dateRangeError}</p>}
 
-      <div className="data-table-wrap">
+      <div className="data-table-wrap" aria-busy={loading}>
         <table className="data-table pledge-table">
           <thead>
             <tr>
@@ -214,8 +210,10 @@ function PledgeRecords() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              <tr><td colSpan={9} className="table-message">Loading Pledge records...</td></tr>
+            {dateRangeError ? (
+              <tr><td colSpan={9} className="table-message">Choose a valid pledge date range to view records.</td></tr>
+            ) : loading ? (
+              <tr><td colSpan={9} className="table-message" role="status">Loading Pledge records...</td></tr>
             ) : error ? (
               <tr><td colSpan={9} className="table-message">Pledge records could not be loaded.</td></tr>
             ) : pledges.length === 0 ? (
@@ -255,15 +253,14 @@ function PledgeRecords() {
                 </td>
                 <td>
                   <div className="bill-row-actions">
-                    <button
-                      className="bill-view-button"
-                      type="button"
-                      aria-label={`View Pledge ${pledge.pledge_number}`}
-                      title="View Pledge details"
-                      onClick={() => setSelectedPledge(pledge)}
+                    <Link
+                      className="button button-secondary button-small"
+                      href={`/pledges/${pledge.id}/form`}
+                      aria-label={`Open Nepali Form for Pledge ${pledge.pledge_number}`}
+                      title="Open Nepali Form"
                     >
-                      <Eye size={15} aria-hidden="true" />
-                    </button>
+                      <Eye size={15} aria-hidden="true" /> Open Nepali Form
+                    </Link>
                   </div>
                 </td>
               </tr>
@@ -272,54 +269,6 @@ function PledgeRecords() {
         </table>
       </div>
 
-      {selectedPledge && (
-        <div
-          className="modal-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSelectedPledge(null);
-          }}
-        >
-          <section
-            className="modal-panel pledge-view-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="pledge-view-title"
-          >
-            <div className="modal-heading">
-              <div>
-                <p className="eyebrow">PLEDGE RECORD</p>
-                <h2 id="pledge-view-title">{selectedPledge.pledge_number}</h2>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                aria-label="Close Pledge details"
-                onClick={() => setSelectedPledge(null)}
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
-            <dl className="pledge-view-grid">
-              <div><dt>Customer</dt><dd>{selectedPledge.customer_name}</dd></div>
-              <div><dt>Business Source</dt><dd>{selectedPledge.business_source_name || "—"}</dd></div>
-              <div><dt>Pledge Date</dt><dd>{formatDate(selectedPledge.pledge_date)}</dd></div>
-              <div><dt>Amount Received</dt><dd>{formatMoney(selectedPledge.amount_received)}</dd></div>
-              <div><dt>Due Date</dt><dd>{formatDate(selectedPledge.due_date)}</dd></div>
-              <div><dt>Status</dt><dd>{STATUS_LABELS[selectedPledge.status]}</dd></div>
-            </dl>
-            <h3 className="pledge-view-items-title">Pledged Items</h3>
-            <ul className="pledge-view-items">
-              {selectedPledge.items.map((item) => (
-                <li key={item.id}>
-                  <span>{item.description}</span>
-                  <span>{item.weight_grams} g · Qty {item.quantity}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      )}
     </BusinessAppShell>
   );
 }

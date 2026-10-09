@@ -209,3 +209,42 @@ These assumptions are implementation decisions for V1 and can be revised after c
 ### Overall implementation readiness
 
 **V1 implementation proceeds under the assumptions above.** Client confirmation is still required to replace or ratify these assumptions; until then, they must not be described as client-confirmed requirements.
+
+## Phase 6 — Pledge Lifecycle Actions
+
+The implementation scope supplied for Phase 6 is:
+
+- Provide Redeem and Cancel actions for ACTIVE pledges using the existing authenticated status-update API.
+- Ask for confirmation before submitting either action, explaining that the closed record cannot be edited or reopened.
+- Display the status and redemption or cancellation date returned by the backend after a successful transition.
+- Keep REDEEMED and CANCELLED pledges read-only, with no edit or lifecycle actions.
+- Do not add repayment, interest, accounting, printing, or government forms. Use the existing backend contract; explain any API limitation before changing the backend.
+
+Acceptance criteria:
+
+- Declining confirmation sends no update. Confirming sends only `status: REDEEMED` or `status: CANCELLED` to `PATCH /api/pledges/<id>/` through the existing authenticated request utility.
+- While a transition is pending, disable edit and both lifecycle actions and prevent duplicate submissions.
+- On success, show the saved status and backend-assigned lifecycle date, and remove edit and lifecycle actions.
+- On failure, show a safe error and reload the record when possible so a pledge closed by another session remains read-only.
+- Existing list, create, detail, and edit behavior is preserved. No backend, database, or auth-utility changes are required for this scope.
+
+## Phase 7 — Pledge Report
+
+- Add a read-only Pledge Report at `/pledges/report`, linked from Pledge Management navigation and Pledge Records.
+- Reuse the authenticated Pledge list API with the existing inclusive pledge date range (`date_from`, `date_to`) and status filters. No new endpoint or migration is required.
+- For the same matching records shown in the table, display counts of matching, ACTIVE, REDEEMED, CANCELLED, and overdue pledges, using the API's `is_overdue` value.
+- Show the sum of recorded `amount_received` values, labeled as the sum of recorded amounts received. Include every matching status and add decimal values exactly. This is not a pledged valuation, outstanding balance, revenue, repayment, or accounting total.
+- Show pledge number, customer, business source, pledge date, amount received, due date, status, and overdue state, with links to Pledge detail.
+- Provide loading, empty, safe error, retry, and invalid-date-range states. Summary and table must always correspond to the selected filters; hide stale results while loading.
+- Do not add printing, PDF/export, interest, repayment, accounting, or government-form features. Preserve existing Pledge workflows and authentication utilities.
+
+## Current Pledge UI — Approved Direction and Reference Limits
+
+- Pledge Records manages individual pledges; Customer-wise Report groups pledge history by customer. Both open the shared Nepali form directly.
+- Create, view, and edit use the same paper layout. Save opens the saved read-only form; Cancel discards the draft. Redeem and Cancel lifecycle actions stay outside the paper.
+- The latest supplied glossary supersedes earlier tentative transcriptions: use `मिति`, `जिल्ला`, `कारोबारी`, `ठेगाना`, `क्र.सं.`, `दिएको र लिएको विवरण`, `तोल`, `घट`, `जोर`, `वा`, `न`, `खाता नं.`, and `सही` where their positions can be established.
+- Quantity remains an API item field and appears within item details; it does not populate `घट` or `जोर`. Unavailable paper fields remain blank. Actual item rows are numbered sequentially, with no unused rows by default.
+- The handwritten red page number varies. Earlier wording treating `1305` as static content is superseded: never hardcode it. The API has no dedicated paper-page serial, so that area stays blank.
+- Dates retain the existing Gregorian API semantics and grams remain the existing weight unit. No Bikram Sambat conversion, bill calculations, amount-in-words, printing, or export is included.
+- Reference limitations: the earlier paper photo and screenshots were unavailable during this revision. The positions of `वा` and `न` remain unresolved and those labels are not placed speculatively. Exact paper positioning, heading spelling, and declaration wording still require verification against the original. The paper's calendar convention is unverified; the UI explicitly identifies the dates it stores as Gregorian (AD).
+- Frontend lint, TypeScript, production build, and rendered-markup/report checks passed. Browser visual review was unavailable in this session; this revision does not claim exact visual fidelity to the original paper.

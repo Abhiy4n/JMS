@@ -1009,6 +1009,88 @@ textarea:focus-visible {
   width: min(100%, 690px);
 }
 
+.pledge-detail-heading {
+  align-items: flex-start;
+}
+
+.pledge-detail-status-line,
+.pledge-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pledge-detail-status-line {
+  margin-top: 10px;
+}
+
+.pledge-detail-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.pledge-detail-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.pledge-detail-card .pledge-section-heading {
+  margin-bottom: 4px;
+}
+
+.pledge-detail-items-table {
+  min-width: 620px;
+}
+
+.pledge-record-grid {
+  margin-bottom: 0;
+}
+
+.pledge-readonly-notice {
+  color: #6a4c12;
+  background: #fff5dc;
+  border-color: #f0d28a;
+}
+
+.pledge-report-filter-panel,
+.pledge-report-summary {
+  margin-bottom: 20px;
+}
+
+.pledge-report-filters,
+.pledge-report-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+}
+
+.pledge-report-filters {
+  align-items: end;
+  margin-top: 14px;
+}
+
+.pledge-report-summary h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.pledge-report-cards {
+  margin-top: 14px;
+}
+
+.pledge-item-header > span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pledge-item-header > .bill-remove-item {
+  margin-left: 0;
+}
+
 .pledge-view-grid,
 .pledge-summary-grid {
   display: grid;
@@ -2256,6 +2338,14 @@ textarea:focus-visible {
     align-items: stretch;
   }
 
+  .pledge-detail-heading {
+    flex-direction: column;
+  }
+
+  .pledge-detail-actions {
+    flex-wrap: wrap;
+  }
+
   .pledge-filters {
     justify-content: flex-start;
   }
@@ -2475,6 +2565,15 @@ textarea:focus-visible {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .pledge-detail-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pledge-detail-actions > .button {
+    width: 100%;
   }
 
   .source-account-cards {

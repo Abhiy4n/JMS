@@ -68,10 +68,34 @@ export function fetchPledges(filters: PledgeFilters = {}) {
   );
 }
 
+export function getPledge(id: number) {
+  return apiRequest<Pledge>(
+    `/api/pledges/${id}/`,
+    {},
+    getAccessToken()
+  );
+}
+
 export function createPledge(payload: NewPledge) {
   return apiRequest<Pledge>(
     "/api/pledges/",
     { method: "POST", body: JSON.stringify(payload) },
+    getAccessToken()
+  );
+}
+
+export function updatePledge(id: number, payload: NewPledge) {
+  return apiRequest<Pledge>(
+    `/api/pledges/${id}/`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+    getAccessToken()
+  );
+}
+
+export function closePledge(id: number, status: Exclude<PledgeStatus, "ACTIVE">) {
+  return apiRequest<Pledge>(
+    `/api/pledges/${id}/`,
+    { method: "PATCH", body: JSON.stringify({ status }) },
     getAccessToken()
   );
 }

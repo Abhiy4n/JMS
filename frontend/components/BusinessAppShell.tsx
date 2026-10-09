@@ -61,6 +61,8 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
   }
 
   const displayName = user?.name || "Your account";
+  const pledgeReportActive = pathname === "/pledges/report";
+  const pledgeRecordsActive = !pledgeReportActive && (pathname === "/pledges" || pathname.startsWith("/pledges/"));
 
   return (
     <div className="app-frame">
@@ -120,14 +122,24 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
             <Link
               href="/pledges"
               onClick={() => setMenuOpen(false)}
-              className={`sidebar-link ${pathname === "/pledges" || pathname.startsWith("/pledges/") ? "sidebar-link-active" : ""}`}
-              aria-current={pathname === "/pledges" || pathname.startsWith("/pledges/") ? "page" : undefined}
+              className={`sidebar-link ${pledgeRecordsActive ? "sidebar-link-active" : ""}`}
+              aria-current={pledgeRecordsActive ? "page" : undefined}
             >
               <span className="nav-glyph" aria-hidden="true">◇</span>
               <span>Pledge Records</span>
-              {(pathname === "/pledges" || pathname.startsWith("/pledges/")) && (
+              {pledgeRecordsActive && (
                 <span className="active-dot" aria-hidden="true" />
               )}
+            </Link>
+            <Link
+              href="/pledges/report"
+              onClick={() => setMenuOpen(false)}
+              className={`sidebar-link ${pledgeReportActive ? "sidebar-link-active" : ""}`}
+              aria-current={pledgeReportActive ? "page" : undefined}
+            >
+              <span className="nav-glyph" aria-hidden="true">▤</span>
+              <span>Customer-wise Report</span>
+              {pledgeReportActive && <span className="active-dot" aria-hidden="true" />}
             </Link>
             <div className="sidebar-link sidebar-link-placeholder" aria-disabled="true">
               <span className="nav-glyph" aria-hidden="true">▧</span>
