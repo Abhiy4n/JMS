@@ -26,6 +26,8 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "accounts",
     "api",
+    "billing",
+    "pledges",
 ]
 
 MIDDLEWARE = [
@@ -59,12 +61,20 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-DATABASES = {
-    "default": dj_database_url.config(
-        default=os.getenv("DATABASE_URL", "postgresql://postgres@localhost:5432/jms"),
-        conn_max_age=600,
-    )
-}
+# Local development works without a PostgreSQL service; deployed environments
+# keep using the database supplied through DATABASE_URL.
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    DATABASES = {
+        "default": dj_database_url.parse(database_url, conn_max_age=600),
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        },
+    }
 
 AUTH_USER_MODEL = "accounts.User"
 
@@ -83,7 +93,12 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = [
-    origin for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",") if origin
+    origin
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin
 ]
 
 REST_FRAMEWORK = {

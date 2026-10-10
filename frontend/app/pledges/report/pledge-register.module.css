@@ -1,0 +1,152 @@
+.groups {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.group {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.customerToggle {
+  padding: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.customerToggle:hover {
+  background: #f5f8fa;
+}
+
+.customerToggle:focus-visible {
+  outline: 2px solid var(--primary, #185c88);
+  outline-offset: 3px;
+}
+
+.customerHeading {
+  display: inline-flex;
+  width: calc(100% - 24px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.customerId {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.groupCount {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pledges {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pledge {
+  padding: 20px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.pledgeHeading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pledgeHeading h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.facts dt {
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.facts dd {
+  margin: 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.itemsAndAction {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.itemsAndAction > a {
+  flex-shrink: 0;
+}
+
+.items {
+  min-width: 0;
+  font-size: 13px;
+}
+
+.items h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.items ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.items p {
+  margin: 0;
+}
+
+.itemMeasures {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .customerToggle,
+  .pledge {
+    padding: 14px;
+  }
+
+  .customerHeading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .itemsAndAction {
+    flex-direction: column;
+    gap: 16px;
+  }
+}

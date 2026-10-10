@@ -38,6 +38,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=255)
+    profile_picture = models.URLField(blank=True)
     role = models.CharField(
         max_length=32,
         choices=Role.choices,
@@ -57,3 +58,67 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+
+class BusinessSource(models.Model):
+    class ChannelType(models.TextChoices):
+        DIRECT = "DIRECT", "Direct"
+        MARKETING = "MARKETING", "Marketing"
+        REFERRAL = "REFERRAL", "Referral"
+        DEALER = "DEALER", "Dealer"
+        CORPORATE = "CORPORATE", "Corporate"
+        BRANCH = "BRANCH", "Branch"
+        OTHER = "OTHER", "Other"
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        INACTIVE = "INACTIVE", "Inactive"
+
+    name = models.CharField(max_length=255, unique=True)
+    channel_type = models.CharField(
+        max_length=20,
+        choices=ChannelType.choices,
+        default=ChannelType.OTHER,
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+    )
+    description = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="business_sources_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Customer(models.Model):
+    # Each customer belongs to one acquisition source; counts and source
+    # detail pages are derived from this relation instead of duplicated data.
+    business_source = models.ForeignKey(
+        BusinessSource,
+        on_delete=models.PROTECT,
+        related_name="customers",
+    )
+    name = models.CharField(max_length=255)
+    phone = models.CharField(max_length=32, blank=True)
+    email = models.EmailField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+
+    def __str__(self):
+        return self.name
