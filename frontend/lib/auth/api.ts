@@ -1,3 +1,5 @@
+import { queueFlashToast } from "@/components/toast/flash";
+
 import { clearSession, getRefreshToken, updateAccessToken } from "./storage";
 
 export type AuthUser = {
@@ -73,7 +75,8 @@ function sendRequest(
   accessToken?: string | null
 ) {
   const headers = new Headers(options.headers);
-  if (!headers.has("Content-Type") && options.body) {
+  // FormData needs the browser-generated multipart boundary header.
+  if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (accessToken) {
@@ -115,6 +118,7 @@ function getRenewedAccessToken() {
 function expireSession() {
   clearSession();
   if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+    queueFlashToast("warning", "Your session has expired. Please log in again.");
     window.location.replace("/login");
   }
 }
@@ -176,6 +180,24 @@ export function fetchMe(accessToken: string) {
   return apiRequest<AuthUser>(
     "/api/auth/me/",
     { method: "GET" },
+    accessToken
+  );
+}
+
+export function uploadProfilePicture(file: File, accessToken: string) {
+  const body = new FormData();
+  body.append("profile_picture", file);
+  return apiRequest<AuthUser>(
+    "/api/auth/me/profile-picture/",
+    { method: "POST", body },
+    accessToken
+  );
+}
+
+export function removeProfilePicture(accessToken: string) {
+  return apiRequest<AuthUser>(
+    "/api/auth/me/profile-picture/",
+    { method: "DELETE" },
     accessToken
   );
 }

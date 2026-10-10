@@ -3,20 +3,22 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { LogIn } from "lucide-react";
 
+import { useToast } from "@/components/toast/ToastProvider";
 import { ApiError, login } from "@/lib/auth/api";
 import { saveSession } from "@/lib/auth/storage";
+import { userFacingError } from "@/lib/user-facing-error";
 
 import { PasswordInput } from "./PasswordInput";
 
 export function LoginForm() {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   const [pending, setPending] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError(null);
     setPending(true);
 
     const form = new FormData(e.currentTarget);
@@ -31,14 +33,15 @@ export function LoginForm() {
         data.user,
         remember
       );
+      toast.success(`Welcome back, ${data.user.name}.`, { icon: LogIn });
       router.replace("/dashboard");
       router.refresh();
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError("Unable to reach the server. Is the API running?");
-      }
+      toast.error(
+        err instanceof ApiError
+          ? userFacingError(err, "Could not log in. Please try again.")
+          : "Unable to reach the server. Is the API running?"
+      );
     } finally {
       setPending(false);
     }
@@ -54,6 +57,7 @@ export function LoginForm() {
       </p>
 
       <form
+        method="post"
         onSubmit={handleSubmit}
         className="mt-8 flex flex-col gap-6 md:mt-10 md:gap-7"
       >
@@ -92,12 +96,6 @@ export function LoginForm() {
             Forgot password?
           </Link>
         </div>
-
-        {error ? (
-          <p className="text-sm text-red-600" role="alert">
-            {error}
-          </p>
-        ) : null}
 
         <button
           type="submit"

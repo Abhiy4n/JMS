@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-import BusinessAppShell from "@/components/BusinessAppShell";
 import CustomerDialog from "@/components/CustomerDialog";
 import {
   type AccountHistoryStatus,
@@ -175,7 +174,7 @@ export default function BusinessSourceDetailPage() {
   const periodSummary = account?.filtered_summary ?? EMPTY_SUMMARY;
 
   return (
-    <BusinessAppShell>
+    <>
       <Link href="/dashboard" className="back-link"><span aria-hidden="true">←</span> Business Sources</Link>
       {!Number.isInteger(sourceId) || sourceId < 1 ? (
         <p className="notice notice-error" role="alert">This business source could not be found.</p>
@@ -503,6 +502,6 @@ export default function BusinessSourceDetailPage() {
           }}
         />
       )}
-    </BusinessAppShell>
+    </>
   );
 }

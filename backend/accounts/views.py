@@ -1,5 +1,11 @@
+from urllib.parse import urlparse
+from uuid import uuid4
+
+from django.conf import settings
+from django.core.files.storage import default_storage
 from django.db.models import Count, Q
 from rest_framework import generics, permissions, status
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -7,12 +13,16 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .models import BusinessSource, Customer
 from .serializers import (
+    PROFILE_PICTURE_EXTENSIONS,
     BusinessSourceSerializer,
     CustomerSerializer,
     LoginSerializer,
+    ProfilePictureSerializer,
     RegisterSerializer,
     UserSerializer,
 )
+
+PROFILE_PICTURE_DIR = "profile_pictures"
 
 
 def tokens_for_user(user):
@@ -60,6 +70,49 @@ class MeView(generics.RetrieveAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+def stored_profile_picture_name(url):
+    path = urlparse(url).path
+    if not path.startswith(settings.MEDIA_URL):
+        return None
+    name = path[len(settings.MEDIA_URL):]
+    return name if name.startswith(f"{PROFILE_PICTURE_DIR}/") else None
+
+
+class ProfilePictureView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request):
+        serializer = ProfilePictureSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        image = serializer.validated_data["profile_picture"]
+
+        user = request.user
+        extension = PROFILE_PICTURE_EXTENSIONS[image.content_type]
+        name = default_storage.save(
+            f"{PROFILE_PICTURE_DIR}/{user.pk}/{uuid4().hex}{extension}", image
+        )
+
+        previous_name = stored_profile_picture_name(user.profile_picture)
+        user.profile_picture = request.build_absolute_uri(default_storage.url(name))
+        user.save(update_fields=["profile_picture"])
+        if previous_name:
+            default_storage.delete(previous_name)
+
+        return Response(UserSerializer(user).data)
+
+    def delete(self, request):
+        user = request.user
+        previous_name = stored_profile_picture_name(user.profile_picture)
+        if user.profile_picture:
+            user.profile_picture = ""
+            user.save(update_fields=["profile_picture"])
+        if previous_name:
+            default_storage.delete(previous_name)
+
+        return Response(UserSerializer(user).data)
 
 
 class AuthTokenRefreshView(TokenRefreshView):

@@ -4,7 +4,6 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
-import BusinessAppShell from "@/components/BusinessAppShell";
 import CustomerDialog from "@/components/CustomerDialog";
 import {
   type BusinessSource,
@@ -15,7 +14,7 @@ import {
 
 export default function CustomersPage() {
   return (
-    <Suspense fallback={<BusinessAppShell><p className="detail-loading">Loading customers...</p></BusinessAppShell>}>
+    <Suspense fallback={<p className="detail-loading">Loading customers...</p>}>
       <CustomersDirectory />
     </Suspense>
   );
@@ -61,7 +60,7 @@ function CustomersDirectory() {
   }, [search, sourceFilter, reloadKey]);
 
   return (
-    <BusinessAppShell>
+    <>
       <section className="page-heading">
         <div>
           <p className="eyebrow">CUSTOMER DIRECTORY</p>
@@ -162,6 +161,6 @@ function CustomersDirectory() {
           }}
         />
       )}
-    </BusinessAppShell>
+    </>
   );
 }
