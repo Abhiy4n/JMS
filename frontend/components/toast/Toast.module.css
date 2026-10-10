@@ -1,0 +1,175 @@
+.viewport {
+  --toast-surface: #fff;
+  --toast-text: #202023;
+  --toast-muted: #77777e;
+  --toast-border: #e6e6e3;
+  --toast-track: #f1f1ef;
+  --toast-shadow: 0 16px 42px rgb(15 23 42 / 14%), 0 3px 10px rgb(15 23 42 / 6%);
+  --toast-success: #15945a;
+  --toast-error: #df3e43;
+  --toast-warning: #c27c0e;
+  --toast-info: #2f68e8;
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 100;
+  display: flex;
+  width: min(360px, calc(100vw - 24px));
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+:global(html[data-jms-theme="dark"]) .viewport {
+  --toast-surface: #20201e;
+  --toast-text: #f3f3f0;
+  --toast-muted: #aaa9a3;
+  --toast-border: #30302d;
+  --toast-track: #2d2d2a;
+  --toast-shadow: 0 18px 46px rgb(0 0 0 / 45%), 0 3px 10px rgb(0 0 0 / 30%);
+  --toast-success: #3ccf8a;
+  --toast-error: #ff6b6f;
+  --toast-warning: #f0b445;
+  --toast-info: #6f9cff;
+}
+
+:global(html[data-jms-theme="gold"]) .viewport {
+  --toast-surface: #fffdf8;
+  --toast-text: #262118;
+  --toast-muted: #817767;
+  --toast-border: #e8dfce;
+  --toast-track: #f5ecd7;
+  --toast-shadow: 0 16px 42px rgb(60 44 12 / 14%), 0 3px 10px rgb(60 44 12 / 7%);
+  --toast-success: #2f8a55;
+  --toast-error: #c2413f;
+  --toast-warning: #b07812;
+  --toast-info: #3d6fc4;
+}
+
+.toast {
+  --toast-accent: var(--toast-info);
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 24px;
+  align-items: start;
+  gap: 11px;
+  overflow: hidden;
+  padding: 13px 12px 15px 14px;
+  border: 1px solid var(--toast-border);
+  border-radius: 8px;
+  color: var(--toast-text);
+  background: var(--toast-surface);
+  box-shadow: var(--toast-shadow);
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+  pointer-events: auto;
+  animation: toastIn 240ms cubic-bezier(0.21, 1.02, 0.73, 1) both;
+}
+
+.toast[data-type="success"] { --toast-accent: var(--toast-success); }
+.toast[data-type="error"] { --toast-accent: var(--toast-error); }
+.toast[data-type="warning"] { --toast-accent: var(--toast-warning); }
+.toast[data-type="info"] { --toast-accent: var(--toast-info); }
+
+.leaving {
+  animation: toastOut 200ms ease-in forwards;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--toast-accent);
+  stroke-width: 2;
+}
+
+.message {
+  margin: 0;
+  padding-top: 1px;
+  font-size: 13px;
+  font-weight: 520;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.close {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  margin: -2px -2px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--toast-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.close:hover {
+  color: var(--toast-text);
+  background: var(--toast-track);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--toast-accent);
+  outline-offset: 1px;
+}
+
+.close svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+.progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--toast-accent);
+  opacity: 0.85;
+  transform-origin: left center;
+  animation: toastProgress var(--toast-duration, 4000ms) linear forwards;
+}
+
+.progress[data-paused="true"] {
+  animation-play-state: paused;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toastOut {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(20px); }
+}
+
+@keyframes toastProgress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@media (max-width: 640px) {
+  .viewport {
+    top: 12px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress {
+    display: none;
+  }
+}
+
+@media print {
+  .viewport {
+    display: none;
+  }
+}

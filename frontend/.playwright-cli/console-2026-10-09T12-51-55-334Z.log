@@ -1,0 +1,6 @@
+[     497ms] [ERROR] Access to fetch at 'http://localhost:8000/api/business-sources/' from origin 'http://127.0.0.1:3102' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:3102/dashboard:0
+[     499ms] [ERROR] Failed to load resource: net::ERR_FAILED @ http://localhost:8000/api/business-sources/:0
+[  126741ms] [ERROR] Access to fetch at 'http://localhost:8000/api/business-sources/' from origin 'http://127.0.0.1:3102' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:3102/customers:0
+[  126741ms] [ERROR] Failed to load resource: net::ERR_FAILED @ http://localhost:8000/api/business-sources/:0
+[  126742ms] [ERROR] Access to fetch at 'http://localhost:8000/api/customers/' from origin 'http://127.0.0.1:3102' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:3102/customers:0
+[  126742ms] [ERROR] Failed to load resource: net::ERR_FAILED @ http://localhost:8000/api/customers/:0

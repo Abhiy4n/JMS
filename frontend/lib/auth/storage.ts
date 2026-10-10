@@ -32,6 +32,10 @@ function setAuthCookie(remember: boolean) {
   document.cookie = parts.join("; ");
 }
 
+function announceSessionUpdate() {
+  window.dispatchEvent(new Event("jms-session-updated"));
+}
+
 function clearAuthCookie() {
   document.cookie = `${AUTH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
 }
@@ -50,12 +54,14 @@ export function saveSession(
   store.setItem(USER_KEY, JSON.stringify(user));
   store.setItem(REMEMBER_KEY, remember ? "1" : "0");
   setAuthCookie(remember);
+  announceSessionUpdate();
 }
 
 export function clearSession() {
   if (!canUseDom()) return;
   clearBothStorages();
   clearAuthCookie();
+  announceSessionUpdate();
 }
 
 function readStore(): Storage | null {
@@ -81,6 +87,13 @@ export function getStoredUser(): AuthUser | null {
   } catch {
     return null;
   }
+}
+
+export function updateStoredUser(user: AuthUser) {
+  const store = readStore();
+  if (!store) return;
+  store.setItem(USER_KEY, JSON.stringify(user));
+  announceSessionUpdate();
 }
 
 export function isRemembered(): boolean {

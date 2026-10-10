@@ -3,9 +3,9 @@
 import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, FilePlus2, Plus, Save, Trash2 } from "lucide-react";
 
-import BusinessAppShell from "@/components/BusinessAppShell";
+import { useToast } from "@/components/toast/ToastProvider";
 import { createBill, fetchBill, type Bill, type BillRateUnit, type NewBill, updateBill } from "@/lib/bill-data";
 import { type Customer, fetchCustomers } from "@/lib/business-data";
 import { userFacingError } from "@/lib/user-facing-error";
@@ -230,7 +230,7 @@ function validateItem(item: BillItemDraft): ItemErrors {
 
 export default function NewBillPage() {
   return (
-    <Suspense fallback={<BusinessAppShell><p className="detail-loading">Loading bill form...</p></BusinessAppShell>}>
+    <Suspense fallback={<p className="detail-loading">Loading bill form...</p>}>
       <NewBillFormContents />
     </Suspense>
   );
@@ -263,6 +263,7 @@ function NewBillFormContents() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     let current = true;
@@ -447,9 +448,14 @@ function NewBillFormContents() {
       const saved = editing && billId !== undefined
         ? await updateBill(billId, payload)
         : await createBill(payload);
+      if (editing) {
+        toast.success(`Bill ${saved.bill_number} updated.`, { icon: Save });
+      } else {
+        toast.success(`Bill ${saved.bill_number} created.`, { icon: FilePlus2 });
+      }
       router.push(`/bills/${saved.id}`);
     } catch (requestError) {
-      setFormError(userFacingError(
+      toast.error(userFacingError(
         requestError,
         editing ? "Could not update the bill. Please review the fields and try again." : "Could not create the bill. Please review the fields and try again."
       ));
@@ -473,7 +479,7 @@ function NewBillFormContents() {
   }
 
   return (
-    <BusinessAppShell>
+    <>
       <Link href={editing ? `/bills/${billId}` : "/bills"} className="back-link">
         <ArrowLeft size={16} aria-hidden="true" /> {editing ? "Bill Detail" : "Bills"}
       </Link>
@@ -919,6 +925,6 @@ function NewBillFormContents() {
         </div>
       </form>
       )}
-    </BusinessAppShell>
+    </>
   );
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Ban, Eye, Pencil, Plus, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
-import BusinessAppShell from "@/components/BusinessAppShell";
+import { useToast } from "@/components/toast/ToastProvider";
 import { BILL_STATUSES, cancelBill, type Bill, type BillStatus, fetchBills } from "@/lib/bill-data";
 import { userFacingError } from "../../lib/user-facing-error";
 
@@ -34,7 +34,7 @@ function formatDate(value: string) {
 
 export default function BillsPage() {
   return (
-    <Suspense fallback={<BusinessAppShell><p className="detail-loading">Loading bills...</p></BusinessAppShell>}>
+    <Suspense fallback={<p className="detail-loading">Loading bills...</p>}>
       <BillsList />
     </Suspense>
   );
@@ -52,6 +52,7 @@ function BillsList() {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     let current = true;
@@ -104,19 +105,19 @@ function BillsList() {
     if (!approved) return;
 
     setCancellingId(bill.id);
-    setError("");
     try {
       await cancelBill(bill.id);
+      toast.success(`Bill ${bill.bill_number} cancelled.`, { icon: Ban });
       setReloadKey((key) => key + 1);
     } catch (requestError) {
-      setError(userFacingError(requestError, "Could not cancel this bill. Please try again."));
+      toast.error(userFacingError(requestError, "Could not cancel this bill. Please try again."));
     } finally {
       setCancellingId(null);
     }
   }
 
   return (
-    <BusinessAppShell>
+    <>
       <section className="page-heading">
         <div>
           <p className="eyebrow">SALES &amp; BILLING</p>
@@ -284,6 +285,6 @@ function BillsList() {
           </tbody>
         </table>
       </div>
-    </BusinessAppShell>
+    </>
   );
 }

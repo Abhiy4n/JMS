@@ -1,24 +1,18 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { UserPlus } from "lucide-react";
 
+import Select from "@/components/select/Select";
+import { useToast } from "@/components/toast/ToastProvider";
+import { userFacingError } from "@/lib/user-facing-error";
 import {
-  CHANNEL_TYPES,
+  CHANNEL_OPTIONS,
   type BusinessSource,
   type ChannelType,
   createCustomer,
   isValidContactEmail,
 } from "@/lib/business-data";
-
-const CHANNEL_LABELS: Record<ChannelType, string> = {
-  DIRECT: "Direct",
-  MARKETING: "Marketing",
-  REFERRAL: "Referral",
-  DEALER: "Dealer",
-  CORPORATE: "Corporate",
-  BRANCH: "Branch",
-  OTHER: "Other",
-};
 
 export default function CustomerDialog({
   sources,
@@ -45,12 +39,11 @@ export default function CustomerDialog({
   const [newChannelType, setNewChannelType] = useState<ChannelType>("DIRECT");
   const [newSourceDescription, setNewSourceDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const toast = useToast();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
-    setError("");
 
     try {
       const customer = {
@@ -72,9 +65,10 @@ export default function CustomerDialog({
         });
       }
 
+      toast.success(`Customer "${customer.name}" added.`, { icon: UserPlus });
       onCreated();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not create the customer.");
+      toast.error(userFacingError(requestError, "Could not create the customer."));
     } finally {
       setSubmitting(false);
     }
@@ -135,12 +129,15 @@ export default function CustomerDialog({
           </div>
 
           {sourceMode === "existing" ? (
-            <label className="form-field">
-              <span>Select source <b>*</b></span>
-              <select required value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
-                {sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
-              </select>
-            </label>
+            <div className="form-field">
+              <span id="customer-source-label">Select source <b>*</b></span>
+              <Select
+                aria-labelledby="customer-source-label"
+                value={sourceId}
+                options={sources.map((source) => ({ value: String(source.id), label: source.name }))}
+                onChange={setSourceId}
+              />
+            </div>
           ) : (
             <>
               <div className="form-grid">
@@ -148,14 +145,15 @@ export default function CustomerDialog({
                   <span>New source name <b>*</b></span>
                   <input required maxLength={255} value={newSourceName} onChange={(event) => setNewSourceName(event.target.value)} placeholder="e.g. Instagram Campaign" />
                 </label>
-                <label className="form-field">
-                  <span>Channel type <b>*</b></span>
-                  <select value={newChannelType} onChange={(event) => setNewChannelType(event.target.value as ChannelType)}>
-                    {CHANNEL_TYPES.map((channel) => (
-                      <option key={channel} value={channel}>{CHANNEL_LABELS[channel]}</option>
-                    ))}
-                  </select>
-                </label>
+                <div className="form-field">
+                  <span id="customer-channel-label">Channel type <b>*</b></span>
+                  <Select
+                    aria-labelledby="customer-channel-label"
+                    value={newChannelType}
+                    options={CHANNEL_OPTIONS}
+                    onChange={setNewChannelType}
+                  />
+                </div>
               </div>
               <label className="form-field">
                 <span>Description</span>
@@ -164,7 +162,6 @@ export default function CustomerDialog({
             </>
           )}
 
-          {error && <p className="notice notice-error" role="alert">{error}</p>}
           <div className="modal-actions">
             <button className="button button-secondary" type="button" onClick={onClose}>Cancel</button>
             <button className="button button-primary" type="submit" disabled={submitting || (sourceMode === "existing" && !sourceId)}>

@@ -56,6 +56,27 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+PROFILE_PICTURE_MAX_BYTES = 5 * 1024 * 1024
+PROFILE_PICTURE_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+
+
+class ProfilePictureSerializer(serializers.Serializer):
+    profile_picture = serializers.ImageField()
+
+    def validate_profile_picture(self, value):
+        if value.size > PROFILE_PICTURE_MAX_BYTES:
+            raise serializers.ValidationError("Profile picture must be 5 MB or smaller.")
+        # content_type is detected from the decoded image, not the client's filename.
+        if getattr(value, "content_type", None) not in PROFILE_PICTURE_EXTENSIONS:
+            raise serializers.ValidationError("Use a JPG, PNG, WebP, or GIF image.")
+        return value
+
+
 class RegisterSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
     email = serializers.EmailField()
