@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { Ban, Pencil, Printer } from "lucide-react";
 
-import BusinessAppShell from "@/components/BusinessAppShell";
+import { useToast } from "@/components/toast/ToastProvider";
 import { cancelBill, type Bill, type BillStatus, fetchBill } from "@/lib/bill-data";
 import { userFacingError } from "@/lib/user-facing-error";
 
@@ -41,8 +41,8 @@ export default function BillDetailPage() {
   const [bill, setBill] = useState<Bill | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [actionError, setActionError] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     let current = true;
@@ -76,20 +76,20 @@ export default function BillDetailPage() {
     if (!approved) return;
 
     setCancelling(true);
-    setActionError("");
     try {
       const updatedBill = await cancelBill(bill.id);
       setBill(updatedBill);
+      toast.success(`Bill ${updatedBill.bill_number} cancelled.`, { icon: Ban });
       router.refresh();
     } catch (requestError) {
-      setActionError(userFacingError(requestError, "Could not cancel this bill. Please try again."));
+      toast.error(userFacingError(requestError, "Could not cancel this bill. Please try again."));
     } finally {
       setCancelling(false);
     }
   }
 
   return (
-    <BusinessAppShell>
+    <>
       <Link href="/bills" className="back-link"><span aria-hidden="true">←</span> Bills</Link>
       {!validBillId ? (
         <p className="notice notice-error" role="alert">This bill could not be found.</p>
@@ -129,8 +129,6 @@ export default function BillDetailPage() {
               )}
             </div>
           </section>
-
-          {actionError && <p className="notice notice-error" role="alert">{actionError}</p>}
 
           <div className="bill-print-area">
             <header className="bill-print-header">
@@ -216,6 +214,6 @@ export default function BillDetailPage() {
           </div>
         </>
       )}
-    </BusinessAppShell>
+    </>
   );
 }

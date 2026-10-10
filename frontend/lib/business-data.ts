@@ -38,6 +38,32 @@ export function isValidContactEmail(value: string) {
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 export type SourceStatus = "ACTIVE" | "INACTIVE";
 
+export const CHANNEL_LABELS: Record<ChannelType, string> = {
+  DIRECT: "Direct",
+  MARKETING: "Marketing",
+  REFERRAL: "Referral",
+  DEALER: "Dealer",
+  CORPORATE: "Corporate",
+  BRANCH: "Branch",
+  OTHER: "Other",
+};
+
+export const CHANNEL_TONES: Record<ChannelType, string> = {
+  DIRECT: "#4b8fd8",
+  MARKETING: "#d79b3e",
+  REFERRAL: "#8e5ebf",
+  DEALER: "#c46f3a",
+  CORPORATE: "#309a76",
+  BRANCH: "#2f9fa8",
+  OTHER: "#8f8f96",
+};
+
+export const CHANNEL_OPTIONS = CHANNEL_TYPES.map((channel) => ({
+  value: channel,
+  label: CHANNEL_LABELS[channel],
+  tone: CHANNEL_TONES[channel],
+}));
+
 export type BusinessSource = {
   id: number;
   name: string;
