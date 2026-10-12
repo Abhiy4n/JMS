@@ -1739,6 +1739,16 @@ textarea:focus-visible {
   opacity: .45;
 }
 
+.account-bill-status-tabs {
+  width: min(620px, 100%);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.account-bill-status-tabs button {
+  min-height: 42px;
+}
+
 .table-action {
   padding: 5px 0;
   border: 0;

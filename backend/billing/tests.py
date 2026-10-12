@@ -275,10 +275,22 @@ class BillApiTests(APITestCase):
 
     def test_bill_list_search_and_filters(self):
         self.create_bill()
+        other_source = BusinessSource.objects.create(
+            name="Other bill source",
+            channel_type=BusinessSource.ChannelType.DIRECT,
+        )
+        other_customer = Customer.objects.create(
+            business_source=other_source,
+            name="Other bill customer",
+        )
+        self.create_bill(bill_number="BILL-1002", customer=other_customer.id)
         bill = Bill.objects.get(bill_number="BILL-1001")
 
         by_number = self.client.get(reverse("bill-list"), {"search": "1001"})
         by_customer = self.client.get(reverse("bill-list"), {"customer": self.customer.id})
+        by_business_source = self.client.get(
+            reverse("bill-list"), {"business_source": self.source.id}
+        )
         by_status = self.client.get(reverse("bill-list"), {"status": Bill.Status.UNPAID})
         by_date = self.client.get(reverse("bill-list"), {"bill_date": bill.bill_date.isoformat()})
         by_range = self.client.get(
@@ -288,15 +300,18 @@ class BillApiTests(APITestCase):
 
         self.assertEqual(len(by_number.data), 1)
         self.assertEqual(len(by_customer.data), 1)
-        self.assertEqual(len(by_status.data), 1)
-        self.assertEqual(len(by_date.data), 1)
-        self.assertEqual(len(by_range.data), 1)
+        self.assertEqual(len(by_business_source.data), 1)
+        self.assertEqual(len(by_status.data), 2)
+        self.assertEqual(len(by_date.data), 2)
+        self.assertEqual(len(by_range.data), 2)
 
     def test_bill_list_rejects_invalid_filters(self):
         invalid_filters = (
             {"customer": "not-an-id"},
             {"customer": "0"},
             {"customer": "999999"},
+            {"business_source": "not-an-id"},
+            {"business_source": "999999"},
             {"status": "INVALID"},
             {"bill_date": "2026-13-01"},
             {"date_from": "not-a-date"},

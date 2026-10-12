@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
 
-const APP_PATHS = ["/dashboard", "/customers", "/bills", "/business-sources", "/api-docs"];
+const APP_PATHS = ["/dashboard", "/customers", "/bills", "/accounts", "/business-sources", "/api-docs"];
 
 export default function AppChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();

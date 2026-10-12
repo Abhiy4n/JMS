@@ -201,7 +201,7 @@ All paths below are under `/api` and require the existing JWT bearer token, exce
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| GET | `/api/bills/` | List Bills. Supports `search`, `customer`, `status`, `bill_date`, `date_from`, and `date_to`. Search matches Bill number, Customer, or Business Source. |
+| GET | `/api/bills/` | List Bills. Supports `search`, `customer`, `business_source`, `status`, `bill_date`, `date_from`, and `date_to`. Search matches Bill number, Customer, or Business Source. |
 | POST | `/api/bills/` | Create a Bill with nested items. Important fields: `bill_number`, `customer`, `bill_date`, `items`, Bill `discount`, `vat`, `amount_paid`, `payment_method`. Returns the saved Bill with server totals and relationship names/IDs. |
 | GET | `/api/bills/<id>/` | Read a saved Bill and its items. |
 | PUT / PATCH | `/api/bills/<id>/` | Update a Bill. PATCH with `items` replaces the full item list; omit `items` to keep it unchanged. Totals are recalculated and payment is revalidated. |
@@ -219,6 +219,8 @@ The existing Business Source and Customer endpoints remain under `/api/business-
 | File | Responsibility |
 | --- | --- |
 | `frontend/app/bills/page.tsx` | Bills list, filters, and View/Edit/Cancel links/actions. |
+| `frontend/app/accounts/bills/page.tsx` | Accounts > Bills register with search, status, customer, business-source, and date-range filters. |
+| `frontend/app/accounts/page.tsx` | Redirects the Accounts entry point to its Bills submodule. |
 | `frontend/app/bills/new/page.tsx` | Shared create/edit form; edit mode uses the `edit` query parameter. |
 | `frontend/app/bills/[id]/page.tsx` | Saved Bill detail, cancellation, Business Source link, and browser print action. |
 | `frontend/app/business-sources/[id]/page.tsx` | Business Source account overview, filtered history, statement, Customer list, and Create Bill entry point. |
@@ -226,7 +228,7 @@ The existing Business Source and Customer endpoints remain under `/api/business-
 | `frontend/lib/business-source-account.ts` | Typed Business Source account response and authenticated query helper. |
 | `frontend/lib/business-data.ts` | Existing Business Source/Customer types and Customer/source API helpers. |
 | `frontend/lib/user-facing-error.ts` | Replaces Django HTML/debug error pages with safe user-facing fallback messages. |
-| `frontend/components/BusinessAppShell.tsx` | Shared navigation, including Bills. |
+| `frontend/components/BusinessAppShell.tsx` | Shared navigation, including Bills and the separate Accounts section. |
 | `frontend/app/globals.css` | Existing JMS design tokens plus account, Bill detail, responsive, and print styling. |
 
 API helpers reuse `apiRequest` and the existing JWT token storage. No second authentication mechanism is used.

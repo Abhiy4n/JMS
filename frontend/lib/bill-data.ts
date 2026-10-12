@@ -54,6 +54,7 @@ export type Bill = {
 export type BillFilters = {
   search?: string;
   customer?: number;
+  business_source?: number;
   status?: BillStatus;
   bill_date?: string;
   date_from?: string;
@@ -109,8 +110,12 @@ export function updateBill(id: number, payload: BillUpdate) {
   );
 }
 
-export function cancelBill(id: number) {
-  return updateBill(id, { status: "CANCELLED" });
+export function deleteBill(id: number) {
+  return apiRequest<void>(
+    `/api/bills/${id}/`,
+    { method: "DELETE" },
+    getAccessToken()
+  );
 }
 
 export function createBill(payload: NewBill) {

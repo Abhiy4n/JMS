@@ -2,8 +2,6 @@
 
 ## Setup
 
-From the repository root:
-
 ```bash
 cd backend
 python3 -m venv .venv

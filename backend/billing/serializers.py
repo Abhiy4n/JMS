@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.db import transaction
 from rest_framework import serializers
 
-from accounts.models import Customer
+from accounts.models import BusinessSource, Customer
 from .models import Bill, BillItem, quantize_money
 
 
@@ -141,6 +141,7 @@ class BillItemSerializer(serializers.ModelSerializer):
 
 class BillListFilterSerializer(serializers.Serializer):
     customer = serializers.IntegerField(required=False, min_value=1)
+    business_source = serializers.IntegerField(required=False, min_value=1)
     status = serializers.ChoiceField(choices=Bill.Status.choices, required=False)
     bill_date = serializers.DateField(required=False)
     date_from = serializers.DateField(required=False)
@@ -149,6 +150,11 @@ class BillListFilterSerializer(serializers.Serializer):
     def validate_customer(self, value):
         if not Customer.objects.filter(pk=value).exists():
             raise serializers.ValidationError("Customer does not exist.")
+        return value
+
+    def validate_business_source(self, value):
+        if not BusinessSource.objects.filter(pk=value).exists():
+            raise serializers.ValidationError("Business source does not exist.")
         return value
 
     def validate(self, attrs):

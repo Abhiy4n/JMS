@@ -36,6 +36,8 @@ class BillListCreateView(generics.ListCreateAPIView):
             )
         if "customer" in filters:
             queryset = queryset.filter(customer_id=filters["customer"])
+        if "business_source" in filters:
+            queryset = queryset.filter(customer__business_source_id=filters["business_source"])
         if "status" in filters:
             queryset = queryset.filter(status=filters["status"])
         if "bill_date" in filters:
