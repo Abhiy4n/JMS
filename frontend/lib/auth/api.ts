@@ -62,8 +62,9 @@ function formatDrfError(data: unknown, prefix = ""): string {
 }
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_URL !== undefined
+    ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")
+    : "http://localhost:8000";
 
 let refreshInFlight: Promise<string> | null = null;
 
