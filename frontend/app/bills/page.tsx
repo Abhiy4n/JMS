@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Ban, Eye, Pencil, Plus, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
+import { CUSTOMER_TYPE_LABELS } from "@/lib/business-data";
 import BusinessAppShell from "@/components/BusinessAppShell";
 import { BILL_STATUSES, cancelBill, type Bill, type BillStatus, fetchBills } from "@/lib/bill-data";
 import { userFacingError } from "../../lib/user-facing-error";
@@ -43,6 +44,8 @@ export default function BillsPage() {
 function BillsList() {
   const searchParams = useSearchParams();
   const created = searchParams.get("created") === "1";
+  const customerParam = searchParams.get("customer");
+  const customerFilter = customerParam && /^\d+$/.test(customerParam) ? Number(customerParam) : undefined;
   const [bills, setBills] = useState<Bill[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<BillStatus | "">("");
@@ -59,6 +62,7 @@ function BillsList() {
       setLoading(true);
       setError("");
       fetchBills({
+        customer: customerFilter,
         search,
         status: status || undefined,
         date_from: dateFrom || undefined,
@@ -85,7 +89,7 @@ function BillsList() {
       current = false;
       window.clearTimeout(timer);
     };
-  }, [search, status, dateFrom, dateTo, reloadKey]);
+  }, [search, status, dateFrom, dateTo, reloadKey, customerFilter]);
 
   const hasFilters = Boolean(search.trim() || status || dateFrom || dateTo);
 
@@ -99,7 +103,7 @@ function BillsList() {
   async function handleCancel(bill: Bill) {
     if (bill.status === "CANCELLED") return;
     const approved = window.confirm(
-      `Are you sure you want to cancel ${bill.bill_number}?\n\nThis Bill will remain in history but will no longer contribute to the Business Source's active account balance.`
+      `Are you sure you want to cancel ${bill.bill_number}?\n\nThis Bill will remain in history but will no longer contribute to the customer's active account balance.`
     );
     if (!approved) return;
 
@@ -210,23 +214,26 @@ function BillsList() {
             <tr>
               <th scope="col">Bill Number</th>
               <th scope="col">Customer</th>
-              <th scope="col">Business Source</th>
+              <th scope="col">Customer Type</th>
+              <th scope="col">Transaction</th>
               <th scope="col">Bill Date</th>
               <th scope="col">Total</th>
               <th scope="col">Amount Paid</th>
-              <th scope="col">Amount Due</th>
-              <th scope="col">Status</th>
+              <th scope="col">Credit / Payable</th>
+              <th scope="col">Interest Due</th>
+              <th scope="col">Total Due</th>
+              <th scope="col">Sale Status</th>
               <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="table-message">Loading bills...</td></tr>
+              <tr><td colSpan={12} className="table-message">Loading bills...</td></tr>
             ) : error ? (
-              <tr><td colSpan={9} className="table-message">Bills could not be loaded.</td></tr>
+              <tr><td colSpan={12} className="table-message">Bills could not be loaded.</td></tr>
             ) : bills.length === 0 ? (
               <tr>
-                <td colSpan={9} className="table-message empty-message">
+                <td colSpan={12} className="table-message empty-message">
                   <strong>{hasFilters ? "No matching bills" : "No bills yet"}</strong>
                   <span>{hasFilters ? "Try adjusting or clearing the filters." : "Bills will appear here when they are available."}</span>
                 </td>
@@ -235,11 +242,14 @@ function BillsList() {
               <tr key={bill.id}>
                 <td className="bill-number-cell">{bill.bill_number}</td>
                 <td>{bill.customer_name}</td>
-                <td>{bill.business_source_name || "—"}</td>
+                <td>{CUSTOMER_TYPE_LABELS[bill.customer_type]}</td>
+                <td>{bill.transaction_type === "SALE" ? "Customer buys" : "Customer sells"}</td>
                 <td>{formatDate(bill.bill_date)}</td>
                 <td className="bill-amount-cell">{formatMoney(bill.grand_total)}</td>
                 <td className="bill-amount-cell">{formatMoney(bill.amount_paid)}</td>
-                <td className="bill-amount-cell">{formatMoney(bill.status === "CANCELLED" ? "0.00" : bill.amount_due)}</td>
+                <td className="bill-amount-cell">{formatMoney(bill.transaction_type === "SALE" ? bill.credit.principal_due : bill.status === "DRAFT" || bill.status === "CANCELLED" ? "0.00" : bill.amount_due)}</td>
+                <td className="bill-amount-cell">{formatMoney(bill.credit.interest_due)}</td>
+                <td className="bill-amount-cell">{formatMoney(bill.transaction_type === "SALE" ? bill.credit.total_due : bill.status === "DRAFT" || bill.status === "CANCELLED" ? "0.00" : bill.amount_due)}</td>
                 <td>
                   <span className={`status-badge status-${bill.status.toLowerCase()}`}>
                     {STATUS_LABELS[bill.status]}

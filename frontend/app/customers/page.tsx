@@ -1,167 +1,109 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-
+import { useRouter, useSearchParams } from "next/navigation";
 import BusinessAppShell from "@/components/BusinessAppShell";
-import CustomerDialog from "@/components/CustomerDialog";
-import {
-  type BusinessSource,
-  type Customer,
-  fetchBusinessSources,
-  fetchCustomers,
-} from "@/lib/business-data";
+import CustomerEditDialog from "@/components/CustomerEditDialog";
+import CustomerFolioDialog from "@/components/CustomerFolioDialog";
+import CustomerActions from "@/components/CustomerActions";
+import { CUSTOMER_TYPES, CUSTOMER_TYPE_LABELS, type CustomerType, type Customer, type BusinessSourceSort, BUSINESS_SOURCE_SORTS, fetchCustomers } from "@/lib/business-data";
+import { userFacingError } from "@/lib/user-facing-error";
+import { fetchCustomerBhakaPatraTotals, type CustomerBhakaPatraTotals } from "@/lib/bhaka-patra-api";
+import { formatBhakaPatraAmount, formatBhakaPatraDate } from "@/lib/customer-bhaka-patra";
 
 export default function CustomersPage() {
-  return (
-    <Suspense fallback={<BusinessAppShell><p className="detail-loading">Loading customers...</p></BusinessAppShell>}>
-      <CustomersDirectory />
-    </Suspense>
-  );
+  return <Suspense fallback={<BusinessAppShell><p className="detail-loading">Loading customers...</p></BusinessAppShell>}><CustomersDirectory /></Suspense>;
 }
 
 function CustomersDirectory() {
-  const searchParams = useSearchParams();
+  const params = useSearchParams();
+  const router = useRouter();
+  const search = params.get("q") ?? "";
+  const typeParam = params.get("type") ?? "";
+  const typeFilter = CUSTOMER_TYPES.includes(typeParam as CustomerType) ? typeParam as CustomerType : "";
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [sources, setSources] = useState<BusinessSource[]>([]);
-  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
-  const [sourceFilter, setSourceFilter] = useState(() => searchParams.get("source") ?? "");
+  const [editing, setEditing] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    fetchBusinessSources()
-      .then(setSources)
-      .catch((requestError: unknown) => {
-        setError(requestError instanceof Error ? requestError.message : "Could not load business sources.");
-      });
-  }, [reloadKey]);
+  const [success, setSuccess] = useState("");
+  const [reload, setReload] = useState(0);
+  const selectedParam = params.get("customer");
+  const selectedId = selectedParam && /^\d+$/.test(selectedParam) ? Number(selectedParam) : null;
+  const sortParam = params.get("ordering");
+  const ordering: BusinessSourceSort = BUSINESS_SOURCE_SORTS.includes(sortParam as BusinessSourceSort) ? sortParam as BusinessSourceSort : "first_added";
+  const [totals, setTotals] = useState<CustomerBhakaPatraTotals | null>(null);
+  const [totalsError, setTotalsError] = useState("");
+  const refresh = useCallback(() => setReload((value) => value + 1), []);
+  const closeFolio = useCallback(() => {
+    // Close only the selected windows; preserve directory search, type and ordering.
+    const query = new URLSearchParams(params.toString());
+    query.delete("customer"); query.delete("patra");
+    router.replace(`/customers${query.size ? `?${query}` : ""}`, { scroll: false });
+    refresh();
+  }, [params, router, refresh]);
 
   useEffect(() => {
     let current = true;
-    fetchCustomers(search, sourceFilter ? Number(sourceFilter) : undefined)
-      .then((data) => {
-        if (current) {
-          setCustomers(data);
-          setError("");
-        }
-      })
-      .catch((requestError: unknown) => {
-        if (current) {
-          setError(requestError instanceof Error ? requestError.message : "Could not load customers.");
-        }
-      })
-      .finally(() => {
-        if (current) setLoading(false);
-      });
+    // Overall KPIs are fetched independently, so narrowing the directory cannot change them.
+    fetchCustomerBhakaPatraTotals().then((data) => { if (current) { setTotals(data); setTotalsError(""); } })
+      .catch((failure) => { if (current) setTotalsError(userFacingError(failure, "Could not load overall Rakha Patra totals.")); });
     return () => { current = false; };
-  }, [search, sourceFilter, reloadKey]);
+  }, [reload]);
 
-  return (
-    <BusinessAppShell>
-      <section className="page-heading">
-        <div>
-          <p className="eyebrow">CUSTOMER DIRECTORY</p>
-          <h1>Customers</h1>
-          <p className="page-description">Customer records stay connected to the source that brought them in.</p>
-        </div>
-        <button className="button button-primary" onClick={() => setDialogOpen(true)}>
-          <span aria-hidden="true">+</span>
-          New Customer
-        </button>
-      </section>
+  useEffect(() => {
+    // Ignore a previous response after filters change or this directory unmounts.
+    let current = true;
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      fetchCustomers(search, typeFilter || undefined, undefined, ordering)
+        .then((data) => { if (current) { setCustomers(data); setError(""); } })
+        .catch((failure) => { if (current) setError(userFacingError(failure, "Could not load customers.")); })
+        .finally(() => { if (current) setLoading(false); });
+    }, 150);
+    return () => { current = false; window.clearTimeout(timer); };
+  }, [search, typeFilter, ordering, reload]);
 
-      {sources.length === 0 && !error && (
-        <p className="notice notice-info">
-          No source categories yet. You can add a customer here and create its new source category in the same form.
-          {" "}<Link href="/dashboard">Open Business Sources</Link>
-        </p>
-      )}
+  useEffect(() => {
+    const refresh = () => setReload((value) => value + 1);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
 
-      <div className="table-toolbar">
-        <div className="table-title-group">
-          <h2>All customers</h2>
-          <span className="record-count">{customers.length}</span>
-        </div>
-        <div className="table-filters">
-          <label className="local-search">
-            <span className="search-glyph" aria-hidden="true">⌕</span>
-            <span className="sr-only">Search customers</span>
-            <input
-              value={search}
-              onChange={(event) => {
-                setLoading(true);
-                setSearch(event.target.value);
-              }}
-              placeholder="Name, phone, email..."
-            />
-          </label>
-          <label className="filter-select-wrap">
-            <span className="sr-only">Filter by source</span>
-            <select
-              value={sourceFilter}
-              onChange={(event) => {
-                setLoading(true);
-                setSourceFilter(event.target.value);
-              }}
-            >
-              <option value="">All sources</option>
-              {sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
-            </select>
-          </label>
-        </div>
+  function filter(name: string, value: string) {
+    const query = new URLSearchParams(params.toString());
+    ["source", "status"].forEach((key) => query.delete(key));
+    if (value) query.set(name, value); else query.delete(name);
+    setLoading(true);
+    router.replace(`/customers${query.size ? `?${query}` : ""}`, { scroll: false });
+  }
+  return <BusinessAppShell><div className="customer-directory">
+    <section className="page-heading"><div><p className="eyebrow">CUSTOMERS</p><h1>Customers</h1><p className="page-description">Review customer folios and records connected to your business sources.</p></div></section>
+    <div className="portfolio-kpis customer-bhaka-patra-kpis customer-overall-kpis" aria-label="Overall customer Rakha Patra totals">
+      <section className="bill-detail-panel"><span>Total Rakha Patra</span><strong>{totalsError ? "Unavailable" : totals ? totals.total_rakha_patra : "Loading..."}</strong></section>
+      <section className="bill-detail-panel"><span>Total Amount</span><strong>{totalsError ? "Unavailable" : totals ? formatBhakaPatraAmount(totals.total_amount) : "Loading..."}</strong></section>
+    </div>
+    {totalsError && <p className="notice notice-error" role="alert">{totalsError} <button className="button button-secondary button-small" onClick={refresh}>Retry totals</button></p>}
+    <div className="table-toolbar customer-directory-toolbar">
+      <div className="table-title-group"><h2>All customers</h2><span className="record-count">{loading ? "Loading..." : customers.length}</span></div>
+      <div className="table-filters">
+        <label className="local-search"><span className="sr-only">Search customers</span><input value={search} onChange={(event) => filter("q", event.target.value)} placeholder="Name, phone, email, source..." /></label>
+        <label className="filter-select-wrap"><span className="sr-only">Customer type</span><select value={typeFilter} onChange={(event) => filter("type", event.target.value)}><option value="">All customer types</option>{CUSTOMER_TYPES.map((kind) => <option key={kind} value={kind}>{CUSTOMER_TYPE_LABELS[kind]}</option>)}</select></label>
+        <label className="filter-select-wrap"><span className="sr-only">Sort customers</span><select aria-label="Sort customers" value={ordering} onChange={(event) => filter("ordering", event.target.value)}><option value="first_added">First created first</option><option value="recently_added">Last created first</option><option value="name_asc">Name A–Z</option><option value="name_desc">Name Z–A</option></select></label>
+        {(search || typeFilter) && <button className="button button-secondary button-small" onClick={() => { setLoading(true); router.replace("/customers", { scroll: false }); }}>Clear filters</button>}
       </div>
-
-      {error && <p className="notice notice-error" role="alert">{error}</p>}
-      <div className="data-table-wrap">
-        <table className="data-table customer-table">
-          <thead>
-            <tr>
-              <th scope="col">Customer</th>
-              <th scope="col">Phone</th>
-              <th scope="col">Email</th>
-              <th scope="col">Business source</th>
-              <th scope="col">Added</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={5} className="table-message">Loading customers...</td></tr>
-            ) : customers.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="table-message empty-message">
-                  <strong>{search || sourceFilter ? "No matching customers" : "No customers yet"}</strong>
-                  <span>{search || sourceFilter ? "Clear or change the filters to see more records." : "Customers added here also update their business source automatically."}</span>
-                </td>
-              </tr>
-            ) : customers.map((customer) => (
-              <tr key={customer.id}>
-                <td className="customer-name-cell">{customer.name}</td>
-                <td>{customer.phone || "—"}</td>
-                <td>{customer.email || "—"}</td>
-                <td><Link className="source-name-link" href={`/business-sources/${customer.business_source}`}>{customer.source_name}</Link></td>
-                <td>{new Date(customer.created_at).toLocaleDateString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {dialogOpen && (
-        <CustomerDialog
-          sources={sources}
-          initialSourceId={sourceFilter ? Number(sourceFilter) : undefined}
-          onClose={() => setDialogOpen(false)}
-          onCreated={() => {
-            setDialogOpen(false);
-            setLoading(true);
-            setReloadKey((key) => key + 1);
-          }}
-        />
-      )}
-    </BusinessAppShell>
-  );
+    </div>
+    {error && <p className="notice notice-error" role="alert">{error}</p>}
+    {success && <p className="notice notice-success" role="status">{success}</p>}
+    <div className="data-table-wrap"><table className="data-table customer-table customer-directory-table">
+      <thead><tr>{["SN", "Customer Name", "Phone", "Email", "Customer type", "Added", "Actions"].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+      <tbody>{loading ? <tr><td colSpan={7} className="table-message">Loading customers...</td></tr> : error ? <tr><td colSpan={7} className="table-message"><button className="button button-secondary" onClick={() => { setLoading(true); setReload((value) => value + 1); }}>Retry loading customers</button></td></tr> : customers.length === 0 ? <tr><td colSpan={7} className="table-message empty-message"><strong>{search || typeFilter ? "No matching customers" : "No customers found"}</strong><span>{search || typeFilter ? "Change your search or customer type to see more records." : "Create a business source to display its corresponding customer entry here."}</span><Link className="source-name-link" href="/business-sources">Go to Business Sources</Link></td></tr> : customers.map((customer, index) => <tr key={customer.id}>
+        <td>{index + 1}</td><td className="customer-name-cell"><Link className="customer-folio-link source-name-link" scroll={false} href={`/customers?${new URLSearchParams({ ...Object.fromEntries(params.entries()), customer: String(customer.id) })}`}>{customer.name}</Link></td>
+        <td>{customer.phone || "—"}</td><td>{customer.email || "—"}</td><td>{CUSTOMER_TYPE_LABELS[customer.customer_type]}</td><td>{formatBhakaPatraDate(customer.created_at)}</td>
+        <td><CustomerActions customer={customer} onEdit={setEditing} onChanged={() => { setSuccess("Customer entry updated."); setReload((value) => value + 1); }} onDeleted={() => { setSuccess("Customer deleted."); setReload((value) => value + 1); }} /></td>
+      </tr>)}</tbody>
+    </table></div>
+    {selectedId !== null && <CustomerFolioDialog key={selectedId} customerId={selectedId} onClose={closeFolio} onUpdated={refresh} />}
+    {editing && <CustomerEditDialog customer={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); setSuccess("Customer updated."); setReload((value) => value + 1); }} />}
+  </div></BusinessAppShell>;
 }

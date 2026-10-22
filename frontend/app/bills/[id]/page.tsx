@@ -6,6 +6,8 @@ import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { Ban, Pencil, Printer } from "lucide-react";
 
+import BillCreditPanel from "@/components/BillCreditPanel";
+import { CUSTOMER_TYPE_LABELS } from "@/lib/business-data";
 import BusinessAppShell from "@/components/BusinessAppShell";
 import { cancelBill, type Bill, type BillStatus, fetchBill } from "@/lib/bill-data";
 import { userFacingError } from "@/lib/user-facing-error";
@@ -71,7 +73,7 @@ export default function BillDetailPage() {
   async function handleCancel() {
     if (!bill || bill.status === "CANCELLED") return;
     const approved = window.confirm(
-      `Are you sure you want to cancel ${bill.bill_number}?\n\nThis Bill will remain in history but will no longer contribute to the Business Source's active account balance.`
+      `Are you sure you want to cancel ${bill.bill_number}?\n\nThis Bill will remain in history but will no longer contribute to the customer's active account balance.`
     );
     if (!approved) return;
 
@@ -132,25 +134,20 @@ export default function BillDetailPage() {
 
           {actionError && <p className="notice notice-error" role="alert">{actionError}</p>}
 
+          <BillCreditPanel bill={bill} onUpdated={setBill} />
+
           <div className="bill-print-area">
             <header className="bill-print-header">
               <div>
                 <p className="eyebrow">SHREE GANESH JEWELLERS</p>
-                <h2>Bill / Invoice</h2>
+                <h2>{bill.transaction_type === "SALE" ? "Sale Bill / Invoice" : "Purchase Bill / Invoice"}</h2>
               </div>
               <div className="bill-print-number"><strong>{bill.bill_number}</strong><span>{formatDate(bill.bill_date)}</span></div>
             </header>
 
             <section className="bill-detail-parties">
-              <div>
-                <span>Business Source</span>
-                <strong>
-                  <Link href={`/business-sources/${bill.business_source_id}`} className="source-name-link">
-                    {bill.business_source_name || "—"}
-                  </Link>
-                </strong>
-              </div>
-              <div><span>Customer</span><strong>{bill.customer_name}</strong></div>
+              <div><span>Customer type</span><strong>{CUSTOMER_TYPE_LABELS[bill.customer_type]}</strong></div>
+              <div><span>Customer</span><strong><Link href={`/customers?customer=${bill.customer}`} className="source-name-link">{bill.customer_name}</Link></strong></div>
               <div><span>Bill Date</span><strong>{formatDate(bill.bill_date)}</strong></div>
             </section>
 
@@ -198,8 +195,8 @@ export default function BillDetailPage() {
                 <h2>Payment</h2>
                 <dl>
                   <div><dt>Payment Method</dt><dd>{bill.payment_method || "—"}</dd></div>
-                  <div><dt>Amount Paid</dt><dd>{formatMoney(bill.amount_paid)}</dd></div>
-                  <div><dt>Amount Due</dt><dd>{formatMoney(bill.amount_due)}</dd></div>
+                  <div><dt>{bill.transaction_type === "SALE" ? "Amount Paid" : "Paid to customer"}</dt><dd>{formatMoney(bill.amount_paid)}</dd></div>
+                  <div><dt>{bill.transaction_type === "SALE" ? "Amount Due" : "Shop still owes"}</dt><dd>{formatMoney(bill.amount_due)}</dd></div>
                   <div><dt>Payment Status</dt><dd><span className={`status-badge status-${bill.status.toLowerCase()}`}>{STATUS_LABELS[bill.status]}</span></dd></div>
                 </dl>
               </div>

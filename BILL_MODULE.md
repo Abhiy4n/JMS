@@ -1,5 +1,7 @@
 # JMS Bill Module
 
+> October 10, 2026 update: bills now show Customer Type instead of Business Source, and customer accounts include fixed-period credit interest and dated principal adjustments. The original source-based workflows below are historical; [PROGRESS.md](PROGRESS.md) documents the current workflows and credit rules.
+
 ## Introduction
 
 The Bill Module is JMS's transaction layer. It records a sale for a Customer, stores the purchased Bill Items, calculates saved totals, records the amount paid and remaining due, and exposes Bill history, editing, cancellation, Business Source account reporting, and browser printing.

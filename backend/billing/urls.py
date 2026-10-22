@@ -1,9 +1,14 @@
 from django.urls import path
 
-from .views import BillDetailView, BillListCreateView, BusinessSourceAccountView
+from .views import BillDetailView, BillListCreateView, BusinessSourceAccountView, CustomerAccountView
+from .credit_views import CustomerCreditListView, CustomerCreditDetailView, CustomerCreditPaymentView
 
 
 urlpatterns = [
+    path("credits/", CustomerCreditListView.as_view(), name="credit-list"),
+    path("credits/<int:pk>/", CustomerCreditDetailView.as_view(), name="credit-detail"),
+    path("credits/<int:credit_id>/payments/", CustomerCreditPaymentView.as_view(), name="credit-payment"),
+    path("customers/<int:customer_id>/account/", CustomerAccountView.as_view(), name="customer-account"),
     path(
         "business-sources/<int:source_id>/account/",
         BusinessSourceAccountView.as_view(),

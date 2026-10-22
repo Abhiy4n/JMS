@@ -195,8 +195,10 @@ textarea:focus-visible {
 }
 
 .sidebar-link:hover {
-  background: #14223c;
+  background: #edc24b;
+  color: #242018;
 }
+.sidebar-link:hover .nav-glyph { color: #242018; }
 
 .sidebar-link-active {
   border-color: #705a2c;
@@ -2202,6 +2204,27 @@ textarea:focus-visible {
   margin: 14mm;
 }
 
+/* Customer type modules and credit details reuse existing panels and tables. */
+.customer-type-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.module-actions { display: flex; justify-content: flex-end; margin-bottom: 20px; }
+.source-name-button { border: 0; padding: 0; background: transparent; cursor: pointer; text-align: left; font: inherit; }
+.source-customer-list { max-height: 280px; overflow-y: auto; margin-bottom: 20px; }
+.source-customer-row { display: grid; gap: 4px; padding: 12px 0; border-bottom: 1px solid #e5e7eb; color: inherit; text-decoration: none; }
+.source-customer-row:hover { color: #956f0e; }
+.portfolio-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+.portfolio-kpis strong { display: block; font-size: 21px; margin-top: 12px; }
+@media (max-width: 1100px) { .portfolio-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .portfolio-kpis { grid-template-columns: 1fr; } }
+.customer-type-card { display: flex; flex-direction: column; gap: 12px; }
+.customer-type-card h2, .customer-type-card p { margin: 0; }
+.customer-type-card .button { margin-top: auto; }
+.interest-example-panel { margin-top: 24px; }
+.interest-example-panel p { margin: 16px 0; line-height: 1.6; }
+.credit-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.credit-summary-grid strong { display: block; font-size: 24px; margin-top: 10px; }
+.credit-payment-form { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 16px; margin: 20px 0; }
+@media (max-width: 850px) { .customer-type-grid, .credit-summary-grid, .credit-payment-form { grid-template-columns: 1fr; } }
+
 @media print {
   body * {
     visibility: hidden !important;
@@ -2270,3 +2293,128 @@ textarea:focus-visible {
     text-decoration: none !important;
   }
 }
+
+/* The customer portfolio occupies 75% of the viewport, with room on mobile. */
+.customer-details-popup { width: 75vw; max-width: 100%; height: 75vh; max-height: 90vh; }
+.customer-details-popup .portfolio-kpis { margin-top: 24px; }
+.customer-module-heading { margin-bottom: 20px; }
+.customer-module-heading h1 { margin: 0 0 8px; font-size: 26px; }
+.customer-module-heading p { margin: 0; color: var(--muted); }
+.customer-directory-toolbar { flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; }
+.customer-directory-toolbar .table-filters { flex-wrap: wrap; }
+.customer-bhaka-patra-overview { margin-top: 24px; margin-bottom: 24px; }
+.portfolio-kpis.customer-bhaka-patra-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.portfolio-kpis.business-source-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 600px) { .portfolio-kpis.business-source-kpis { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .portfolio-kpis.customer-bhaka-patra-kpis { grid-template-columns: 1fr; } }
+.customer-actions .notice { max-width: 280px; white-space: normal; font-size: 12px; }
+.business-source-toolbar { flex-wrap: wrap; }
+.business-source-toolbar .table-filters { flex-wrap: wrap; }
+.source-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin: 16px 0 22px; }
+.source-detail-grid div { min-width: 0; }
+.source-detail-grid dt { color: var(--muted); font-size: 12px; }
+.source-detail-grid dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .source-detail-grid { grid-template-columns: 1fr; } }
+@media (max-width: 850px) { .customer-details-popup { width: 95vw; height: 85vh; padding: 16px; } }
+
+/* Customer folio uses the existing bill surfaces, tables and controls. */
+.customer-directory-table .customer-name-cell { padding: 0; min-width: 210px; max-width: 320px; }
+.customer-folio-link { display: flex; align-items: center; min-height: 56px; padding: 14px 15px; white-space: normal; overflow-wrap: anywhere; text-decoration: none; }
+.customer-folio-link:hover { background: #fbfcff; }
+.customer-folio-link:focus-visible, .bhaka-patra-row:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
+.customer-directory-table td { vertical-align: middle; }
+.customer-directory-table .customer-actions { padding: 8px 0; }
+.folio-back { display: inline-block; margin-bottom: 16px; font-size: 13px; }
+.folio-customer-name { overflow-wrap: anywhere; }
+.folio-contact-panel { margin-top: 24px; }
+.folio-contact-panel dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 28px; }
+.folio-contact-panel dl > div { align-items: start; }
+.folio-contact-panel dd { text-align: right; overflow-wrap: anywhere; }
+.folio-actions { display: flex; flex-wrap: wrap; align-items: start; gap: 12px; margin-top: 24px; }
+.bhaka-patra-table { min-width: 620px; }
+.bhaka-patra-row { cursor: pointer; }
+.bhaka-patra-table .bhaka-items-summary { max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
+.bhaka-preview-panel { width: min(1100px, 95vw); max-width: 95vw; max-height: 92vh; background: #f4f6f8; }
+.bhaka-document { background: #fff; border: 1px solid var(--line); padding: 36px; color: #18253a; font-size: 13px; line-height: 1.6; }
+.bhaka-document-header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #26364e; padding-bottom: 22px; margin-bottom: 24px; }
+.bhaka-document h2 { font-size: 24px; letter-spacing: .08em; margin: 8px 0 0; }
+.bhaka-document h3 { font-size: 13px; margin: 0 0 12px; }
+.bhaka-document section { margin-bottom: 24px; }
+.bhaka-document dl { margin: 0; }
+.bhaka-document dl > div { display: flex; justify-content: space-between; gap: 24px; margin: 5px 0; }
+.bhaka-document dt { color: #65748a; }
+.bhaka-document dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.bhaka-document-customer { max-width: 540px; }
+.bhaka-document-table-wrap { overflow-x: auto; }
+.bhaka-document-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.bhaka-document-table th, .bhaka-document-table td { border: 1px solid #dce2e8; text-align: left; padding: 10px; vertical-align: top; overflow-wrap: anywhere; }
+.bhaka-document-table th { background: #f8fafc; font-weight: 600; }
+.bhaka-document-table th:nth-last-child(-n+3), .bhaka-document-table td:nth-last-child(-n+3) { text-align: right; }
+.bhaka-document-summary { margin-left: auto; max-width: 440px; }
+.bhaka-document-total { padding: 10px 0; border-top: 1px solid #26364e; border-bottom: 1px solid #26364e; font-weight: 700; }
+.bhaka-document-caption { font-size: 11px; color: #65748a; }
+.bhaka-document-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+.bhaka-document-footer { display: flex; justify-content: space-between; gap: 24px; border-top: 1px solid #dce2e8; padding-top: 24px; color: #65748a; font-size: 11px; }
+.bhaka-document-footer > div { text-align: center; }
+.bhaka-signature-line { display: block; width: 150px; margin-top: 36px; border-top: 1px solid #65748a; }
+@media (max-width: 700px) {
+  .folio-contact-panel dl { grid-template-columns: 1fr; }
+  .bhaka-document { padding: 18px; }
+  .bhaka-document-header, .bhaka-document-footer { flex-direction: column; }
+  .bhaka-document-summary { max-width: 100%; }
+  .bhaka-document-table { min-width: 580px; }
+}
+@media print {
+  .bhaka-document, .bhaka-document * { visibility: visible !important; }
+  .bhaka-preview-backdrop { position: absolute; inset: 0; display: block; padding: 0; background: white; }
+  .bhaka-preview-panel { width: 100%; max-width: 100%; max-height: none; overflow: visible; padding: 0; }
+  .bhaka-preview-panel > .modal-heading { display: none; }
+  .bhaka-document { border: 0; padding: 0; }
+  .bhaka-document-table-wrap { overflow: visible; }
+  .bhaka-document section, .bhaka-document-footer { break-inside: avoid; }
+}
+
+/* Gold accents remain scoped to Customers and its folio windows. */
+.customer-folio-window { width: 75vw; max-width: none; height: 75vh; max-height: 90vh; }
+.customer-folio-window > .modal-heading { padding-bottom: 16px; border-bottom: 1px solid #eadcb9; }
+.customer-folio-window > .modal-heading h2,
+.customer-directory .table-title-group h2,
+.customer-folio-content .folio-contact-panel h3,
+.customer-directory .bhaka-preview-panel > .modal-heading h2 { color: #856118; }
+.customer-folio-content .folio-contact-panel { margin-top: 0; }
+.customer-folio-content .folio-contact-panel h3 { font-size: 13px; margin: 0 0 12px; }
+.customer-folio-content .folio-customer-name { margin: 0 0 16px; font-size: 16px; }
+.customer-folio-content .folio-customer-name span { font-size: 12px; color: var(--muted); margin-left: 8px; }
+.customer-directory .customer-bhaka-patra-kpis .bill-detail-panel { background: #fffdf7; border-color: #eadcb9; border-top: 3px solid var(--gold); }
+.customer-directory .customer-bhaka-patra-kpis .bill-detail-panel > span { color: #856118; font-size: 12px; font-weight: 600; }
+.customer-directory .customer-bhaka-patra-kpis .bill-detail-panel > strong { color: #765414; font-variant-numeric: tabular-nums; }
+.customer-directory .record-count { background: var(--gold-wash); color: #856118; }
+.customer-directory .customer-folio-link:hover { color: #856118; background: #fffdf7; }
+.customer-directory .customer-folio-link:focus-visible,
+.customer-directory .bhaka-patra-row:focus-visible { outline-color: var(--gold-deep); }
+.customer-directory .bhaka-document h3 { color: #856118; }
+@media (max-width: 850px) {
+  .customer-folio-window { width: 95vw; height: 88vh; max-height: 92vh; padding: 18px; }
+}
+
+/* Business Sources shares the restrained gold accents of Customers. */
+.business-source-module .business-source-kpis .bill-detail-panel { background: #fffdf7; border-color: #eadcb9; border-top: 3px solid var(--gold); }
+.business-source-module .business-source-kpis .bill-detail-panel > span { color: #856118; font-size: 12px; font-weight: 600; }
+.business-source-module .business-source-kpis .bill-detail-panel > strong { color: #765414; font-variant-numeric: tabular-nums; }
+.business-source-module .record-count { background: var(--gold-wash); color: #856118; }
+.business-source-table .business-source-name-cell { padding: 0; min-width: 200px; max-width: 320px; }
+.business-source-name-button { display: block; width: 100%; min-height: 56px; padding: 14px 15px; white-space: normal; overflow-wrap: anywhere; }
+.business-source-name-button:hover { color: #856118; background: #fffdf7; }
+.business-source-name-button:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: -3px; }
+.business-source-details-window { width: 75vw; max-width: none; height: 75vh; max-height: 90vh; }
+.business-source-details-window .modal-heading { padding-bottom: 16px; border-bottom: 1px solid #eadcb9; }
+.business-source-details-window .modal-heading h2,
+.business-source-details-window .source-detail-grid dt,
+.business-source-details-window .form-field > span,
+.business-source-editor .modal-heading h2,
+.business-source-editor .form-field > span { color: #856118; }
+.business-source-details-window .source-customer-row:hover { background: #fffdf7; }
+@media (max-width: 850px) {
+  .business-source-details-window { width: 95vw; height: 88vh; max-height: 92vh; padding: 18px; }
+}
+.customer-folio-toolbar { flex-wrap: wrap; gap: 12px; }

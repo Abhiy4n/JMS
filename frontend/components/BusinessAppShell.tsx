@@ -7,10 +7,12 @@ import { ChevronDown, CircleUserRound, LogOut, Moon, Sparkles, Sun } from "lucid
 import { clearSession, getStoredUser } from "@/lib/auth/storage";
 import type { AuthUser } from "@/lib/auth/api";
 
+// Bills list transactions; manually issued credit lives under Accounts.
 const primaryNavigation = [
-  { label: "Customers", href: "/customers", icon: "♙" },
-  { label: "Business Sources", href: "/dashboard", icon: "▤" },
-  { label: "Bills", href: "/bills", icon: "▧" },
+  { label: "Customers", href: "/customers", icon: "C", header: false, section: "" },
+  { label: "Business Source", href: "/business-sources", icon: "B", header: false, section: "" },
+  { label: "Bills", href: "/bills", icon: "B", header: false, section: "BILLING" },
+  { label: "Credit", href: "/accounts/credit", icon: "C", header: false, section: "ACCOUNTS" },
 ];
 
 export default function BusinessAppShell({ children }: { children: ReactNode }) {
@@ -74,25 +76,25 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
           </span>
         </Link>
 
-        <div className="sidebar-section-label">OPERATIONS</div>
         <nav aria-label="Main navigation" className="sidebar-navigation">
-          {primaryNavigation.map(({ label, href, icon }) => {
+          {primaryNavigation.map(({ label, href, icon, header, section }) => {
             const active =
               pathname === href ||
-              pathname.startsWith(`${href}/`) ||
-              (href === "/dashboard" && pathname.startsWith("/business-sources/"));
+              pathname.startsWith(`${href}/`);
             return (
+              <div key={href}>
+              {section && <div className="sidebar-section-label">{section}</div>}
               <Link
-                key={href}
                 href={href}
                 onClick={() => setMenuOpen(false)}
-                className={`sidebar-link ${active ? "sidebar-link-active" : ""}`}
+                className={`sidebar-link ${header ? "sidebar-module-header" : ""} ${active ? "sidebar-link-active" : ""}`}
                 aria-current={active ? "page" : undefined}
               >
                 <span className="nav-glyph" aria-hidden="true">{icon}</span>
                 <span>{label}</span>
                 {active && <span className="active-dot" aria-hidden="true" />}
               </Link>
+              </div>
             );
           })}
         </nav>
@@ -105,7 +107,7 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
         </div>
         <div className="sidebar-footer">
           <span className="sidebar-footer-dot" />
-          <span>Customer records stay linked to their source</span>
+          <span>Business sources define credit interest</span>
         </div>
       </aside>
 

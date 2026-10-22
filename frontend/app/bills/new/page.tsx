@@ -7,7 +7,7 @@ import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
 import { createBill, fetchBill, type Bill, type BillRateUnit, type NewBill, updateBill } from "@/lib/bill-data";
-import { type Customer, fetchCustomers } from "@/lib/business-data";
+import { type Customer, fetchCustomers, CUSTOMER_TYPE_LABELS } from "@/lib/business-data";
 import { userFacingError } from "@/lib/user-facing-error";
 
 type ItemField =
@@ -239,8 +239,7 @@ export default function NewBillPage() {
 function NewBillFormContents() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sourceParam = searchParams.get("business_source");
-  const sourceId = sourceParam && /^\d+$/.test(sourceParam) ? Number(sourceParam) : undefined;
+  const customerParam = searchParams.get("customer");
   const editParam = searchParams.get("edit");
   const editing = editParam !== null;
   const billId = editParam === null ? undefined : /^\d+$/.test(editParam) ? Number(editParam) : -1;
@@ -252,6 +251,7 @@ function NewBillFormContents() {
   const [savedBill, setSavedBill] = useState<Bill | null>(null);
   const [customerError, setCustomerError] = useState("");
   const [billNumber, setBillNumber] = useState("");
+  const [transactionType, setTransactionType] = useState<"SALE" | "PURCHASE">("SALE");
   const [customerId, setCustomerId] = useState("");
   const [billDate, setBillDate] = useState("");
   const [items, setItems] = useState<BillItemDraft[]>([createEmptyItem(1)]);
@@ -266,12 +266,12 @@ function NewBillFormContents() {
 
   useEffect(() => {
     let current = true;
-    fetchCustomers("", sourceId)
+    fetchCustomers()
       .then((data) => {
         if (current) {
           setCustomers(data);
-          if (sourceId !== undefined && data.length === 1) {
-            setCustomerId(String(data[0].id));
+          if (customerParam && data.some((customer) => String(customer.id) === customerParam)) {
+            setCustomerId(customerParam);
           }
           setCustomerError("");
         }
@@ -285,7 +285,7 @@ function NewBillFormContents() {
         if (current) setCustomersLoading(false);
       });
     return () => { current = false; };
-  }, [sourceId]);
+  }, [customerParam]);
 
   useEffect(() => {
     if (billId === undefined) return;
@@ -295,6 +295,7 @@ function NewBillFormContents() {
         if (!current) return;
         setSavedBill(bill);
         setBillNumber(bill.bill_number);
+        setTransactionType(bill.transaction_type);
         setCustomerId(String(bill.customer));
         setBillDate(bill.bill_date);
         setBillDiscount(bill.discount);
@@ -423,6 +424,7 @@ function NewBillFormContents() {
     try {
       const payload: NewBill = {
         bill_number: billNumber.trim(),
+        transaction_type: transactionType,
         customer: Number(customerId),
         bill_date: billDate,
         items: items.map((item) => ({
@@ -508,6 +510,9 @@ function NewBillFormContents() {
                 </div>
               </div>
               <div className="form-grid bill-info-grid">
+                <label className="form-field"><span>Transaction <b>*</b></span><select value={transactionType} disabled={editing && savedBill?.status !== "DRAFT"} onChange={(event) => setTransactionType(event.target.value as "SALE" | "PURCHASE")}>
+                  <option value="SALE">Customer buys from shop</option><option value="PURCHASE">Customer sells to shop</option>
+                </select></label>
                 <label className="form-field">
                   <span>Bill Number <b>*</b></span>
                   <input
@@ -528,6 +533,7 @@ function NewBillFormContents() {
                   <input
                     required
                     type="date"
+                    disabled={editing && savedBill?.status !== "DRAFT"}
                     value={billDate}
                     aria-invalid={Boolean(fieldErrors.bill_date)}
                     aria-describedby={fieldErrors.bill_date ? "bill-date-error" : undefined}
@@ -549,7 +555,7 @@ function NewBillFormContents() {
                       setCustomerId(event.target.value);
                       clearFieldError("customer");
                     }}
-                    disabled={customersLoading || Boolean(customerError) || (sourceId !== undefined && customers.length === 1)}
+                    disabled={customersLoading || Boolean(customerError) || (editing && savedBill?.status !== "DRAFT")}
                   >
                     <option value="">{customersLoading ? "Loading customers..." : "Select a customer"}</option>
                     {customers.map((customer) => (
@@ -558,16 +564,13 @@ function NewBillFormContents() {
                       </option>
                     ))}
                   </select>
-                  {sourceId !== undefined && customers.length === 1 && (
-                    <span className="bill-field-hint">Customer selected from this Business Source.</span>
-                  )}
                   {customerError && <span className="bill-field-error" id="customer-load-error">{customerError}</span>}
                   {!customerError && fieldErrors.customer && <span className="bill-field-error" id="customer-error">{fieldErrors.customer}</span>}
                 </label>
                 <div className="form-field">
-                  <span>Business Source</span>
+                  <span>Customer type</span>
                   <div className="bill-source-value" aria-live="polite">
-                    {selectedCustomer?.source_name || customers[0]?.source_name || "Set by the selected customer"}
+                    {selectedCustomer ? CUSTOMER_TYPE_LABELS[selectedCustomer.customer_type] : "Set by the selected customer"}
                   </div>
                 </div>
               </div>
@@ -824,7 +827,7 @@ function NewBillFormContents() {
               </div>
               <div className="form-grid bill-info-grid">
                 <label className="form-field">
-                  <span>Amount Paid</span>
+                  <span>{transactionType === "PURCHASE" ? "Paid to customer" : "Amount Paid"}</span>
                   <input
                     type="number"
                     min="0"

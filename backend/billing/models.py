@@ -17,6 +17,10 @@ def quantize_money(value):
 
 
 class Bill(models.Model):
+    class TransactionType(models.TextChoices):
+        SALE = "SALE", "Customer buys from shop"
+        PURCHASE = "PURCHASE", "Customer sells to shop"
+
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
         UNPAID = "UNPAID", "Unpaid"
@@ -25,6 +29,8 @@ class Bill(models.Model):
         CANCELLED = "CANCELLED", "Cancelled"
 
     bill_number = models.CharField(max_length=64, unique=True)
+    # Sale receivables and shop purchase payables must never share interest logic.
+    transaction_type = models.CharField(max_length=10, choices=TransactionType.choices, default=TransactionType.SALE)
     customer = models.ForeignKey(
         Customer,
         on_delete=models.PROTECT,
@@ -44,6 +50,15 @@ class Bill(models.Model):
         default=Status.DRAFT,
     )
     notes = models.TextField(blank=True)
+    # Freeze the customer's terms when credit begins so later type edits do not
+    # silently change an existing loan. Interest stays separate from sale totals.
+    credit_customer_type = models.CharField(max_length=16, choices=Customer.Type.choices, default=Customer.Type.INDIVIDUAL)
+    credit_interest_amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("2000.00"))
+    credit_basis = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("100000.00"))
+    initial_credit = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    # New credit is entered in Accounts/Credit. This flag preserves older loans.
+    interest_enabled = models.BooleanField(default=False)
+    interest_paid = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -77,6 +92,47 @@ class Bill(models.Model):
                 "updated_at",
             )
         )
+
+
+class CreditAdjustment(models.Model):
+    # Positive values add principal; negative values repay/reduce principal.
+    # These dated events preserve the balance that applied at each charge date.
+    bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name="credit_adjustments")
+    effective_date = models.DateField(default=timezone.localdate)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    description = models.CharField(max_length=64)
+
+    class Meta:
+        ordering = ["effective_date", "id"]
+
+
+class CustomerCredit(models.Model):
+    """Manually issued customer credit, independent of jewellery sale bills."""
+
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="credits")
+    credit_date = models.DateField(default=timezone.localdate)
+    principal_amount = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))])
+    # Freeze the source/customer agreement when the credit is entered.
+    credit_customer_type = models.CharField(max_length=16, choices=Customer.Type.choices)
+    credit_interest_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    credit_basis = models.DecimalField(max_digits=14, decimal_places=2)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-credit_date", "-id"]
+
+
+class CustomerCreditPayment(models.Model):
+    # Separate principal/interest receipts preserve historical period balances.
+    credit = models.ForeignKey(CustomerCredit, on_delete=models.CASCADE, related_name="payments")
+    effective_date = models.DateField(default=timezone.localdate)
+    principal_amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    interest_amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["effective_date", "id"]
 
 
 class BillItem(models.Model):

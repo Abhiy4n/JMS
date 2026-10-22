@@ -18,6 +18,9 @@ class BusinessSourceCustomerLinkTests(APITestCase):
             reverse("business-source-list"),
             {
                 "name": "Walk-in Customer",
+                "market_segment": "Retail",
+                "phone": "9800000000",
+                "address": "Kathmandu",
                 "channel_type": BusinessSource.ChannelType.DIRECT,
                 "first_customer": {
                     "name": "Asha Rai",
@@ -32,7 +35,7 @@ class BusinessSourceCustomerLinkTests(APITestCase):
         source = BusinessSource.objects.get(name="Walk-in Customer")
         customer = Customer.objects.get(name="Asha Rai")
         self.assertEqual(customer.business_source, source)
-        self.assertEqual(response.data["customer_count"], 1)
+        self.assertEqual(response.data["customer_count"], 2)  # Source entry and explicitly supplied contact.
         self.assertEqual(source.created_by, self.user)
 
     def test_customer_creation_updates_source_count_and_detail_list(self):
@@ -72,6 +75,8 @@ class BusinessSourceCustomerLinkTests(APITestCase):
                 "phone": "9822222222",
                 "new_business_source": {
                     "name": "Instagram Campaign",
+                    "market_segment": "Social media",
+                    "phone": "9800000000",
                     "channel_type": BusinessSource.ChannelType.MARKETING,
                     "description": "Customers from the spring campaign",
                 },
@@ -84,15 +89,17 @@ class BusinessSourceCustomerLinkTests(APITestCase):
         self.assertEqual(customer.business_source.name, "Instagram Campaign")
         self.assertEqual(customer.business_source.created_by, self.user)
 
-    def test_customer_creation_requires_exactly_one_source_choice(self):
+    def test_customer_creation_no_longer_requires_a_source(self):
         response = self.client.post(
             reverse("customer-list"),
             {"name": "No Source Customer"},
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertFalse(Customer.objects.filter(name="No Source Customer").exists())
+        self.assertEqual(response.status_code, 201, response.data)
+        customer = Customer.objects.get(name="No Source Customer")
+        self.assertIsNone(customer.business_source)
+        self.assertEqual(customer.customer_type, Customer.Type.INDIVIDUAL)
 
     def test_customer_api_rejects_invalid_phone_and_email(self):
         source = BusinessSource.objects.create(
@@ -120,6 +127,7 @@ class BusinessSourceCustomerLinkTests(APITestCase):
             {
                 "name": "Invalid Source Contact",
                 "channel_type": BusinessSource.ChannelType.DIRECT,
+                "address": "Kathmandu",
                 "first_customer": {
                     "name": "Invalid Contact",
                     "phone": "12345678",
