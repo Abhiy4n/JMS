@@ -63,12 +63,19 @@
 
 .navigation { display: grid; min-height: 0; gap: 24px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
 .navGroup { display: grid; gap: 4px; }
+.navItemGroup { display: grid; gap: 2px; }
 .groupLabel { margin: 0 11px 6px; color: var(--shell-subtle); font-size: 11px; font-weight: 720; letter-spacing: .12em; white-space: nowrap; }
 .navItem { display: flex; width: 100%; min-height: 42px; align-items: center; gap: 12px; padding: 0 12px; border: 0; border-radius: 9px; color: var(--shell-muted); background: transparent; cursor: pointer; font-size: 14px; font-weight: 560; text-align: left; white-space: nowrap; transition: color 140ms ease, background 140ms ease; }
 .navItem:hover { color: var(--shell-text); background: var(--shell-hover); }
 .navItem > svg { width: 18px; height: 18px; flex: 0 0 18px; stroke-width: 1.7; }
 .navItem > span { overflow: hidden; text-overflow: ellipsis; }
 .navItemActive,.navItemActive:hover { color: var(--shell-accent-contrast); background: var(--shell-accent); box-shadow: 0 1px 2px rgb(0 0 0 / 9%); }
+.navChevron { margin-left: auto; transition: transform 140ms ease; }
+.navChevronOpen { transform: rotate(180deg); }
+.navSubmenu { display: grid; gap: 2px; padding-left: 14px; }
+.navSubmenu[hidden] { display: none; }
+.navSubItem { min-height: 38px; font-size: 13px; }
+.navSubItem > svg { width: 16px; height: 16px; flex-basis: 16px; }
 
 .sidebarBottom { display: grid; gap: 10px; margin-top: auto; padding-top: 24px; }
 .contextCard { display: flex; align-items: center; gap: 10px; margin: 0 1px; padding: 11px; border: 1px solid var(--shell-border); border-radius: 11px; background: var(--shell-raised); }
@@ -146,11 +153,13 @@
   :global(html[data-jms-sidebar="collapsed"]) .frame .brandRow { flex-direction: column; gap: 12px; margin-bottom: 22px; }
   :global(html[data-jms-sidebar="collapsed"]) .frame .brandCopy,
   :global(html[data-jms-sidebar="collapsed"]) .frame .navItem > span,
+  :global(html[data-jms-sidebar="collapsed"]) .frame .navChevron,
   :global(html[data-jms-sidebar="collapsed"]) .frame .contextCard,
   :global(html[data-jms-sidebar="collapsed"]) .frame .profileCopy,
   :global(html[data-jms-sidebar="collapsed"]) .frame .profileButton > svg { display: none; }
   :global(html[data-jms-sidebar="collapsed"]) .frame .groupLabel { height: 1px; margin: 4px 10px 8px; overflow: hidden; color: transparent; background: var(--shell-border); }
   :global(html[data-jms-sidebar="collapsed"]) .frame .navItem { justify-content: center; padding: 0; }
+  :global(html[data-jms-sidebar="collapsed"]) .frame .navSubmenu { display: none; }
   :global(html[data-jms-sidebar="collapsed"]) .frame .profileButton { justify-content: center; padding: 8px 0; }
 }
 

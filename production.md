@@ -23,7 +23,7 @@ The backend health check is available at `http://localhost:8000/api/health/`.
 ### Terminal 2: Frontend
 
 ```bash
-cd frontend
+cd frontend 
 npm run dev
 ```
 

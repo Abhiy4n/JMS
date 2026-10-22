@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { Ban, Pencil, Printer } from "lucide-react";
+import { Printer, Trash2 } from "lucide-react";
 
 import { useToast } from "@/components/toast/ToastProvider";
-import { cancelBill, type Bill, type BillStatus, fetchBill } from "@/lib/bill-data";
+import { deleteBill, type Bill, type BillStatus, fetchBill } from "@/lib/bill-data";
 import { userFacingError } from "@/lib/user-facing-error";
 
 const STATUS_LABELS: Record<BillStatus, string> = {
@@ -41,7 +41,7 @@ export default function BillDetailPage() {
   const [bill, setBill] = useState<Bill | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [cancelling, setCancelling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -68,23 +68,22 @@ export default function BillDetailPage() {
     return () => { current = false; };
   }, [billId, validBillId]);
 
-  async function handleCancel() {
-    if (!bill || bill.status === "CANCELLED") return;
+  async function handleDelete() {
+    if (!bill) return;
     const approved = window.confirm(
-      `Are you sure you want to cancel ${bill.bill_number}?\n\nThis Bill will remain in history but will no longer contribute to the Business Source's active account balance.`
+      `Permanently delete bill ${bill.bill_number}?\n\nThis action cannot be undone.`
     );
     if (!approved) return;
 
-    setCancelling(true);
+    setDeleting(true);
     try {
-      const updatedBill = await cancelBill(bill.id);
-      setBill(updatedBill);
-      toast.success(`Bill ${updatedBill.bill_number} cancelled.`, { icon: Ban });
-      router.refresh();
+      await deleteBill(bill.id);
+      toast.success(`Bill ${bill.bill_number} deleted.`, { icon: Trash2 });
+      router.replace("/bills");
     } catch (requestError) {
-      toast.error(userFacingError(requestError, "Could not cancel this bill. Please try again."));
+      toast.error(userFacingError(requestError, "Could not delete this bill. Please try again."));
     } finally {
-      setCancelling(false);
+      setDeleting(false);
     }
   }
 
@@ -111,22 +110,20 @@ export default function BillDetailPage() {
               </span>
               {bill.status !== "CANCELLED" && (
                 <Link className="button button-secondary button-small" href={`/bills/new?edit=${bill.id}`}>
-                  <Pencil size={14} aria-hidden="true" /> Edit
+                  Edit
                 </Link>
               )}
               <button className="button button-secondary button-small" type="button" onClick={() => window.print()}>
                 <Printer size={14} aria-hidden="true" /> Print
               </button>
-              {bill.status !== "CANCELLED" && (
-                <button
-                  className="button button-danger-outline button-small"
-                  type="button"
-                  onClick={handleCancel}
-                  disabled={cancelling}
-                >
-                  <Ban size={14} aria-hidden="true" /> {cancelling ? "Cancelling..." : "Cancel Bill"}
-                </button>
-              )}
+              <button
+                className="button button-danger-outline button-small"
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete Bill"}
+              </button>
             </div>
           </section>
 

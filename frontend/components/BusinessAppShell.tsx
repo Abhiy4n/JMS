@@ -10,6 +10,7 @@ import {
   Camera,
   ChevronDown,
   CircleHelp,
+  CircleDollarSign,
   FileText,
   Gem,
   ImageUp,
@@ -25,6 +26,7 @@ import {
   Sun,
   Trash2,
   Users,
+  WalletCards,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -84,6 +86,8 @@ function isActivePath(pathname: string, href: string, label: string) {
 }
 
 function getPageLabel(pathname: string) {
+  if (pathname === "/accounts/paid-unpaid-bills") return "Accounts · Paid / unpaid bills";
+  if (pathname.startsWith("/accounts")) return "Accounts · Bills";
   if (pathname.startsWith("/customers")) return "Customers";
   if (pathname.startsWith("/bills")) return "Bills & invoices";
   if (pathname.startsWith("/business-sources")) return "Business sources";
@@ -102,6 +106,7 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
   const toast = useToast();
   const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(() => pathname.startsWith("/accounts"));
   const [profileOpen, setProfileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -271,6 +276,40 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
                 </Link>
               );
             })}
+            <div className={styles.navItemGroup}>
+              <button
+                className={`${styles.navItem} ${pathname.startsWith("/accounts") ? styles.navItemActive : ""}`}
+                type="button"
+                title={navTitle("Accounts")}
+                aria-expanded={accountsOpen}
+                aria-controls="accounts-submenu"
+                onClick={() => setAccountsOpen((open) => !open)}
+              >
+                <WalletCards aria-hidden="true" />
+                <span>Accounts</span>
+                <ChevronDown className={`${styles.navChevron} ${accountsOpen ? styles.navChevronOpen : ""}`} aria-hidden="true" />
+              </button>
+              <div className={styles.navSubmenu} id="accounts-submenu" aria-label="Accounts" hidden={!accountsOpen}>
+                <Link
+                  className={`${styles.navItem} ${styles.navSubItem} ${pathname === "/accounts/bills" ? styles.navItemActive : ""}`}
+                  href="/accounts/bills"
+                  aria-current={pathname === "/accounts/bills" ? "page" : undefined}
+                  title={navTitle("Bills")}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <FileText aria-hidden="true" /><span>Bills</span>
+                </Link>
+                <Link
+                  className={`${styles.navItem} ${styles.navSubItem} ${pathname === "/accounts/paid-unpaid-bills" ? styles.navItemActive : ""}`}
+                  href="/accounts/paid-unpaid-bills"
+                  aria-current={pathname === "/accounts/paid-unpaid-bills" ? "page" : undefined}
+                  title={navTitle("Paid / unpaid bills")}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <CircleDollarSign aria-hidden="true" /><span>Paid / unpaid bills</span>
+                </Link>
+              </div>
+            </div>
           </div>
 
           <div className={styles.navGroup}>

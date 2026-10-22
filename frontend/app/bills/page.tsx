@@ -2,11 +2,11 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { Ban, Eye, Pencil, Plus, RotateCcw } from "lucide-react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
 import { useToast } from "@/components/toast/ToastProvider";
-import { BILL_STATUSES, cancelBill, type Bill, type BillStatus, fetchBills } from "@/lib/bill-data";
+import { BILL_STATUSES, deleteBill, type Bill, type BillStatus, fetchBills } from "@/lib/bill-data";
 import { userFacingError } from "../../lib/user-facing-error";
 
 const STATUS_LABELS: Record<BillStatus, string> = {
@@ -51,7 +51,7 @@ function BillsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const toast = useToast();
 
   useEffect(() => {
@@ -97,22 +97,21 @@ function BillsList() {
     setDateTo("");
   }
 
-  async function handleCancel(bill: Bill) {
-    if (bill.status === "CANCELLED") return;
+  async function handleDelete(bill: Bill) {
     const approved = window.confirm(
-      `Are you sure you want to cancel ${bill.bill_number}?\n\nThis Bill will remain in history but will no longer contribute to the Business Source's active account balance.`
+      `Permanently delete bill ${bill.bill_number}?\n\nThis action cannot be undone.`
     );
     if (!approved) return;
 
-    setCancellingId(bill.id);
+    setDeletingId(bill.id);
     try {
-      await cancelBill(bill.id);
-      toast.success(`Bill ${bill.bill_number} cancelled.`, { icon: Ban });
+      await deleteBill(bill.id);
+      toast.success(`Bill ${bill.bill_number} deleted.`, { icon: Trash2 });
       setReloadKey((key) => key + 1);
     } catch (requestError) {
-      toast.error(userFacingError(requestError, "Could not cancel this bill. Please try again."));
+      toast.error(userFacingError(requestError, "Could not delete this bill. Please try again."));
     } finally {
-      setCancellingId(null);
+      setDeletingId(null);
     }
   }
 
@@ -249,35 +248,30 @@ function BillsList() {
                 <td>
                   <div className="bill-row-actions">
                     <Link
-                      className="bill-view-button"
+                      className="button button-secondary button-small"
                       href={`/bills/${bill.id}`}
                       aria-label={`View bill ${bill.bill_number}`}
-                      title="View bill details"
                     >
-                      <Eye size={15} aria-hidden="true" />
+                      View
                     </Link>
                     {bill.status !== "CANCELLED" && (
-                      <>
-                        <Link
-                          className="bill-view-button"
-                          href={`/bills/new?edit=${bill.id}`}
-                          aria-label={`Edit bill ${bill.bill_number}`}
-                          title="Edit bill"
-                        >
-                          <Pencil size={14} aria-hidden="true" />
-                        </Link>
-                        <button
-                          className="bill-view-button bill-cancel-action"
-                          type="button"
-                          aria-label={`Cancel bill ${bill.bill_number}`}
-                          title="Cancel bill"
-                          disabled={cancellingId === bill.id}
-                          onClick={() => handleCancel(bill)}
-                        >
-                          <Ban size={14} aria-hidden="true" />
-                        </button>
-                      </>
+                      <Link
+                        className="button button-secondary button-small"
+                        href={`/bills/new?edit=${bill.id}`}
+                        aria-label={`Edit bill ${bill.bill_number}`}
+                      >
+                        Edit
+                      </Link>
                     )}
+                    <button
+                      className="button button-danger-outline button-small"
+                      type="button"
+                      aria-label={`Delete bill ${bill.bill_number}`}
+                      disabled={deletingId === bill.id}
+                      onClick={() => handleDelete(bill)}
+                    >
+                      {deletingId === bill.id ? "Deleting..." : "Delete"}
+                    </button>
                   </div>
                 </td>
               </tr>
