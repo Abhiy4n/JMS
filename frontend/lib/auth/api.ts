@@ -19,6 +19,40 @@ export type AuthResponse = AuthTokens & {
   user: AuthUser;
 };
 
+export type LoginActivitySession = {
+  id: string;
+  device_name: string;
+  device_type: string;
+  browser: string;
+  operating_system: string;
+  ip_address: string | null;
+  location: string;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  status: "active" | "expired" | "revoked";
+  current: boolean;
+};
+
+export type LoginActivityEvent = {
+  id: number;
+  session_id: string | null;
+  is_new_device: boolean;
+  device_name: string;
+  device_type: string;
+  browser: string;
+  operating_system: string;
+  ip_address: string | null;
+  location: string;
+  occurred_at: string;
+};
+
+export type LoginActivity = {
+  sessions: LoginActivitySession[];
+  login_events: LoginActivityEvent[];
+};
+
 export class ApiError extends Error {
   status: number;
   details: unknown;
@@ -200,6 +234,34 @@ export function removeProfilePicture(accessToken: string) {
     { method: "DELETE" },
     accessToken
   );
+}
+
+export function fetchLoginActivity(accessToken: string) {
+  return apiRequest<LoginActivity>(
+    "/api/auth/sessions/",
+    { method: "GET" },
+    accessToken
+  );
+}
+
+export function revokeLoginActivitySession(sessionId: string, accessToken: string) {
+  return apiRequest<void>(
+    `/api/auth/sessions/${encodeURIComponent(sessionId)}/revoke/`,
+    { method: "POST" },
+    accessToken
+  );
+}
+
+export function revokeOtherLoginActivitySessions(accessToken: string) {
+  return apiRequest<{ revoked: number }>(
+    "/api/auth/sessions/revoke-others/",
+    { method: "POST" },
+    accessToken
+  );
+}
+
+export function logoutCurrentSession(accessToken: string) {
+  return apiRequest<void>("/api/auth/logout/", { method: "POST" }, accessToken);
 }
 
 export function refreshAccessToken(refresh: string) {

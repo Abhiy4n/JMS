@@ -3,9 +3,10 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
-from .models import BusinessSource, Customer, Role, User
+from .models import BusinessSource, Customer, LoginEvent, Role, User, UserSession
 
 
 ALLOWED_EMAIL_SUFFIXES = {
@@ -119,6 +120,59 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("This account is inactive.")
         attrs["user"] = user
         return attrs
+
+
+class UserSessionSerializer(serializers.ModelSerializer):
+    current = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserSession
+        fields = (
+            "id",
+            "device_name",
+            "device_type",
+            "browser",
+            "operating_system",
+            "ip_address",
+            "location",
+            "created_at",
+            "last_seen_at",
+            "expires_at",
+            "revoked_at",
+            "status",
+            "current",
+        )
+        read_only_fields = fields
+
+    def get_current(self, obj):
+        current_session = self.context.get("current_session")
+        return current_session is not None and obj.pk == current_session.pk
+
+    def get_status(self, obj):
+        if obj.revoked_at is not None:
+            return "revoked"
+        if obj.expires_at <= timezone.now():
+            return "expired"
+        return "active"
+
+
+class LoginEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LoginEvent
+        fields = (
+            "id",
+            "session_id",
+            "is_new_device",
+            "device_name",
+            "device_type",
+            "browser",
+            "operating_system",
+            "ip_address",
+            "location",
+            "occurred_at",
+        )
+        read_only_fields = fields
 
 
 class NewBusinessSourceCategorySerializer(serializers.Serializer):

@@ -31,6 +31,7 @@ import {
 
 import { useToast } from "@/components/toast/ToastProvider";
 import {
+  logoutCurrentSession,
   removeProfilePicture,
   uploadProfilePicture,
   type AuthUser,
@@ -78,6 +79,7 @@ function applySidebarCollapsed(collapsed: boolean) {
 
 function isActivePath(pathname: string, href: string, label: string) {
   if (label === "Business sources") return pathname === "/dashboard" || pathname.startsWith("/business-sources/");
+  if (label === "Settings") return pathname.startsWith("/settings");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -88,6 +90,7 @@ function getPageLabel(pathname: string) {
   if (pathname === "/pledges/report") return "Customer-wise Report";
   if (pathname.startsWith("/pledges")) return "Pledge Records";
   if (pathname.startsWith("/api-docs")) return "API documentation";
+  if (pathname.startsWith("/settings")) return "Login activity";
   return "Business sources";
 }
 
@@ -167,7 +170,15 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
     setMenuOpen(false);
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    const accessToken = getAccessToken();
+    if (accessToken) {
+      try {
+        await logoutCurrentSession(accessToken);
+      } catch {
+        // Always clear local credentials, even if the server cannot be reached.
+      }
+    }
     clearSession();
     delete document.documentElement.dataset.jmsTheme;
     toast.info("You have been signed out.", { icon: LogOut });
@@ -300,7 +311,7 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
 
           <div className={styles.navGroup}>
             <p className={styles.groupLabel}>SYSTEM</p>
-            <button className={styles.navItem} type="button" title={navTitle("Settings")}><Settings aria-hidden="true" /><span>Settings</span></button>
+            <Link className={`${styles.navItem} ${isActivePath(pathname, "/settings/security/login-activity", "Settings") ? styles.navItemActive : ""}`} href="/settings/security/login-activity" aria-current={pathname.startsWith("/settings") ? "page" : undefined} title={navTitle("Settings")} onClick={() => setMenuOpen(false)}><Settings aria-hidden="true" /><span>Settings</span></Link>
             <button className={styles.navItem} type="button" title={navTitle("Help centre")}><CircleHelp aria-hidden="true" /><span>Help centre</span></button>
           </div>
         </nav>

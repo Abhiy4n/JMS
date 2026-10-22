@@ -105,7 +105,7 @@ CORS_ALLOWED_ORIGINS = [
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "accounts.session_auth.SessionJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -119,3 +119,21 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# JWTs contain a random session reference; only its keyed hash is stored.
+# Changing this key revokes every issued API session.
+AUTH_SESSION_HASH_KEY = os.getenv("AUTH_SESSION_HASH_KEY") or SECRET_KEY
+AUTH_SESSION_ACTIVITY_THROTTLE = timedelta(
+    seconds=max(0, int(os.getenv("AUTH_SESSION_ACTIVITY_THROTTLE_SECONDS", "300")))
+)
+AUTH_SESSION_RETENTION_DAYS = max(1, int(os.getenv("AUTH_SESSION_RETENTION_DAYS", "90")))
+AUTH_LOGIN_EVENT_RETENTION_DAYS = max(
+    1, int(os.getenv("AUTH_LOGIN_EVENT_RETENTION_DAYS", "180"))
+)
+AUTH_LOGIN_EVENT_LIMIT = max(1, int(os.getenv("AUTH_LOGIN_EVENT_LIMIT", "100")))
+AUTH_TRUSTED_PROXY_IPS = [
+    value.strip()
+    for value in os.getenv("AUTH_TRUSTED_PROXY_IPS", "").split(",")
+    if value.strip()
+]
+AUTH_GEOIP2_DATABASE = os.getenv("AUTH_GEOIP2_DATABASE", "")

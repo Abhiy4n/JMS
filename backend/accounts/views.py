@@ -3,34 +3,30 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.core.files.storage import default_storage
+from django.db import transaction
 from django.db.models import Count, Q
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .models import BusinessSource, Customer
+from .models import BusinessSource, Customer, UserSession
+from .session_auth import SessionTokenRefreshSerializer, tokens_for_user
 from .serializers import (
     PROFILE_PICTURE_EXTENSIONS,
     BusinessSourceSerializer,
     CustomerSerializer,
+    LoginEventSerializer,
     LoginSerializer,
     ProfilePictureSerializer,
     RegisterSerializer,
     UserSerializer,
+    UserSessionSerializer,
 )
 
 PROFILE_PICTURE_DIR = "profile_pictures"
-
-
-def tokens_for_user(user):
-    refresh = RefreshToken.for_user(user)
-    return {
-        "access": str(refresh.access_token),
-        "refresh": str(refresh),
-    }
 
 
 class RegisterView(APIView):
@@ -39,10 +35,12 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
+        with transaction.atomic():
+            user = serializer.save()
+            tokens = tokens_for_user(user, request)
         return Response(
             {
-                **tokens_for_user(user),
+                **tokens,
                 "user": UserSerializer(user).data,
             },
             status=status.HTTP_201_CREATED,
@@ -58,7 +56,7 @@ class LoginView(APIView):
         user = serializer.validated_data["user"]
         return Response(
             {
-                **tokens_for_user(user),
+                **tokens_for_user(user, request),
                 "user": UserSerializer(user).data,
             }
         )
@@ -117,6 +115,67 @@ class ProfilePictureView(APIView):
 
 class AuthTokenRefreshView(TokenRefreshView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = SessionTokenRefreshSerializer
+
+
+class LoginActivityView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        current_session = request.auth_session
+        sessions = request.user.auth_sessions.all()
+        events = request.user.login_events.all()[: settings.AUTH_LOGIN_EVENT_LIMIT]
+        return Response(
+            {
+                "sessions": UserSessionSerializer(
+                    sessions,
+                    many=True,
+                    context={"current_session": current_session},
+                ).data,
+                "login_events": LoginEventSerializer(events, many=True).data,
+            }
+        )
+
+
+class RevokeSessionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, session_id):
+        with transaction.atomic():
+            session = UserSession.objects.select_for_update().filter(
+                pk=session_id, user=request.user
+            ).first()
+            if session is None:
+                return Response(
+                    {"detail": "Session not found."}, status=status.HTTP_404_NOT_FOUND
+                )
+            if session.revoked_at is None:
+                session.revoked_at = timezone.now()
+                session.save(update_fields=["revoked_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class RevokeOtherSessionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        revoked = UserSession.objects.filter(
+            user=request.user,
+            revoked_at__isnull=True,
+        ).exclude(pk=request.auth_session.pk).update(revoked_at=timezone.now())
+        return Response({"revoked": revoked})
+
+
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        UserSession.objects.filter(
+            pk=request.auth_session.pk,
+            user=request.user,
+            revoked_at__isnull=True,
+        ).update(revoked_at=timezone.now())
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class BusinessSourceListCreateView(generics.ListCreateAPIView):

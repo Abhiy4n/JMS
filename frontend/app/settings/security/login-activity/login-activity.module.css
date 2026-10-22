@@ -1,0 +1,109 @@
+.page { display: grid; gap: 24px; }
+.heading { align-items: flex-end; margin-bottom: 0; }
+.heading h1 { letter-spacing: -.035em; }
+.refreshButton,.secondaryButton,.revokeButton,.cancelButton,.confirmButton { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 8px; padding: 0 13px; border: 1px solid var(--app-border); border-radius: 9px; color: var(--app-text-strong); background: var(--app-surface); cursor: pointer; font-size: 13px; font-weight: 620; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
+.refreshButton:hover:not(:disabled),.secondaryButton:hover:not(:disabled),.revokeButton:hover:not(:disabled),.cancelButton:hover:not(:disabled) { border-color: var(--app-focus); background: var(--app-surface-muted); }
+.refreshButton:disabled,.secondaryButton:disabled,.revokeButton:disabled,.cancelButton:disabled,.confirmButton:disabled { cursor: wait; opacity: .58; }
+.refreshButton svg,.secondaryButton svg,.revokeButton svg,.confirmButton svg { width: 16px; height: 16px; }
+.spin { animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.newDeviceNotice { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border: 1px solid color-mix(in srgb,var(--app-blue) 28%,var(--app-border)); border-radius: 12px; background: var(--app-blue-wash); }
+.noticeIcon,.sectionIcon,.deviceIcon,.eventIcon { display: grid; flex: 0 0 auto; place-items: center; }
+.noticeIcon { width: 40px; height: 40px; border-radius: 11px; color: var(--app-blue); background: color-mix(in srgb,var(--app-blue) 12%,var(--app-surface)); }
+.noticeIcon svg { width: 20px; height: 20px; }
+.newDeviceNotice strong { color: var(--app-text-strong); font-size: 14px; }
+.newDeviceNotice p { margin: 4px 0 0; color: var(--app-muted); font-size: 13px; }
+.errorState { display: flex; align-items: center; gap: 13px; padding: 15px 18px; border: 1px solid color-mix(in srgb,var(--app-red) 30%,var(--app-border)); border-radius: 11px; color: var(--app-red); background: var(--app-red-wash); }
+.errorState > svg { width: 20px; height: 20px; flex: 0 0 20px; }
+.errorState div { min-width: 0; flex: 1; }
+.errorState strong { color: var(--app-text-strong); font-size: 14px; }
+.errorState p { margin: 3px 0 0; color: var(--app-muted); font-size: 13px; }
+.errorState button { border: 0; color: var(--app-text-strong); background: transparent; cursor: pointer; font-weight: 650; }
+.section { overflow: hidden; border: 1px solid var(--app-border); border-radius: 13px; background: var(--app-surface); box-shadow: 0 2px 8px var(--app-shadow); }
+.sectionHeading { display: flex; min-height: 82px; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 20px; border-bottom: 1px solid var(--app-border); }
+.sectionHeading > div { display: flex; min-width: 0; align-items: center; gap: 13px; }
+.sectionIcon { width: 40px; height: 40px; border-radius: 11px; color: var(--app-muted); background: var(--app-surface-muted); }
+.sectionIcon svg { width: 19px; height: 19px; }
+.sectionHeading h2 { margin: 0; color: var(--app-text-strong); font-size: 16px; font-weight: 680; letter-spacing: -.01em; }
+.sectionHeading p { margin: 4px 0 0; color: var(--app-muted); font-size: 13px; }
+.secondaryButton { white-space: nowrap; }
+.deviceList { display: grid; }
+.deviceCard { display: flex; min-width: 0; align-items: flex-start; gap: 16px; padding: 20px; border-bottom: 1px solid var(--app-border-soft); transition: background 140ms ease; }
+.deviceCard:last-child { border-bottom: 0; }
+.deviceCard[data-current="true"] { background: color-mix(in srgb,var(--app-green) 4%,var(--app-surface)); }
+.deviceIcon { width: 48px; height: 48px; border: 1px solid var(--app-border); border-radius: 12px; color: var(--app-text); background: var(--app-surface); }
+.deviceIcon svg { width: 22px; height: 22px; stroke-width: 1.7; }
+.deviceDetails { min-width: 0; flex: 1; }
+.deviceTitleRow,.eventTitleRow { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.deviceTitleRow h3 { margin: 0; color: var(--app-text-strong); font-size: 15px; font-weight: 680; }
+.currentBadge,.statusBadge,.newBadge { display: inline-flex; min-height: 23px; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid color-mix(in srgb,var(--app-green) 28%,var(--app-border)); border-radius: 999px; color: var(--app-green); background: var(--app-green-wash); font-size: 11px; font-weight: 680; white-space: nowrap; }
+.currentBadge > span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb,currentColor 14%,transparent); }
+.statusBadge { border-color: var(--app-border); color: var(--app-muted); background: var(--app-chip); }
+.statusBadge[data-status="expired"] { color: var(--app-muted); }
+.statusBadge[data-status="revoked"] { border-color: color-mix(in srgb,var(--app-red) 24%,var(--app-border)); color: var(--app-red); background: var(--app-red-wash); }
+.deviceSubtitle { margin: 5px 0 0; color: var(--app-muted); font-size: 13px; }
+.metadata { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; }
+.metadata > span,.eventLocation { display: inline-flex; min-width: 0; align-items: center; gap: 6px; color: var(--app-muted); font-size: 12.5px; }
+.metadata svg,.eventLocation svg { width: 14px; height: 14px; flex: 0 0 14px; color: var(--app-subtle); }
+.loginDate { margin: 8px 0 0; color: var(--app-subtle); font-size: 12px; }
+.revokeButton { flex: 0 0 auto; min-height: 36px; color: var(--app-red); }
+.revokeButton:hover { border-color: color-mix(in srgb,var(--app-red) 35%,var(--app-border)); background: var(--app-red-wash); }
+.privacyNote { display: flex; align-items: center; gap: 7px; margin: 0; padding: 13px 20px; border-top: 1px solid var(--app-border); color: var(--app-subtle); background: var(--app-surface-muted); font-size: 11.5px; line-height: 1.5; }
+.privacyNote svg { width: 14px; height: 14px; flex: 0 0 14px; }
+.eventList { margin: 0; padding: 0; list-style: none; }
+.event { display: flex; align-items: flex-start; gap: 14px; padding: 17px 20px; border-bottom: 1px solid var(--app-border-soft); }
+.event:last-child { border-bottom: 0; }
+.eventIcon { width: 38px; height: 38px; border: 1px solid var(--app-border); border-radius: 11px; color: var(--app-muted); background: var(--app-surface-muted); }
+.eventIcon svg { width: 18px; height: 18px; }
+.eventDetails { min-width: 0; flex: 1; }
+.eventTitleRow strong { color: var(--app-text-strong); font-size: 13.5px; font-weight: 660; }
+.newBadge { min-height: 21px; padding: 1px 7px; border-color: color-mix(in srgb,var(--app-blue) 28%,var(--app-border)); color: var(--app-blue); background: var(--app-blue-wash); font-size: 10.5px; }
+.eventDetails p { margin: 4px 0 5px; color: var(--app-muted); font-size: 12.5px; }
+.eventTime { flex: 0 0 auto; padding-top: 2px; color: var(--app-subtle); font-size: 12px; white-space: nowrap; }
+.state { display: grid; min-height: 190px; place-items: center; align-content: center; gap: 9px; padding: 24px; color: var(--app-muted); text-align: center; }
+.state > svg { width: 27px; height: 27px; color: var(--app-subtle); stroke-width: 1.5; }
+.state strong { color: var(--app-text-strong); font-size: 14px; }
+.state span { font-size: 13px; }
+.dialog { position: fixed; width: min(440px,calc(100% - 32px)); max-width: none; max-height: min(90dvh,600px); overflow: visible; padding: 28px; border: 1px solid var(--app-border); border-radius: 16px; color: var(--app-text); background: var(--app-surface); box-shadow: 0 24px 80px rgb(0 0 0 / 28%); }
+.dialog::backdrop { background: rgb(13 16 21 / 48%); backdrop-filter: blur(3px); }
+.dialogClose { position: absolute; top: 12px; right: 12px; display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 9px; color: var(--app-muted); background: transparent; cursor: pointer; }
+.dialogClose:hover { color: var(--app-text-strong); background: var(--app-surface-muted); }
+.dialogClose svg { width: 18px; height: 18px; }
+.dialogIcon { display: grid; width: 46px; height: 46px; place-items: center; border-radius: 13px; color: var(--app-red); background: var(--app-red-wash); }
+.dialogIcon svg { width: 21px; height: 21px; }
+.dialog h2 { margin: 17px 0 7px; color: var(--app-text-strong); font-size: 19px; letter-spacing: -.02em; }
+.dialog > p { margin: 0; color: var(--app-muted); font-size: 13.5px; line-height: 1.6; }
+.dialogActions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 24px; }
+.confirmButton { border-color: var(--app-red); color: #fff; background: var(--app-red); }
+.confirmButton:hover:not(:disabled) { border-color: color-mix(in srgb,var(--app-red) 82%,#000); background: color-mix(in srgb,var(--app-red) 88%,#000); }
+
+@media (max-width: 760px) {
+  .page { gap: 17px; }
+  .heading { align-items: flex-start; }
+  .heading :global(.page-description) { max-width: 520px; font-size: 13.5px; }
+  .refreshButton { min-height: 38px; padding: 0 10px; }
+  .sectionHeading { align-items: flex-start; flex-direction: column; }
+  .secondaryButton { align-self: stretch; }
+  .deviceCard { flex-wrap: wrap; gap: 12px; padding: 16px; }
+  .deviceIcon { width: 42px; height: 42px; }
+  .deviceDetails { flex-basis: calc(100% - 60px); }
+  .metadata { display: grid; gap: 7px; }
+  .revokeButton { margin-left: 54px; }
+  .event { gap: 10px; padding: 15px; }
+  .eventIcon { width: 34px; height: 34px; }
+  .eventTime { max-width: 82px; white-space: normal; text-align: right; }
+}
+
+@media (max-width: 480px) {
+  .heading { gap: 12px; }
+  .heading :global(.page-description) { margin-top: 5px; }
+  .refreshButton span { display: none; }
+  .refreshButton { width: 39px; padding: 0; }
+  .newDeviceNotice { align-items: flex-start; padding: 13px; }
+  .noticeIcon { width: 35px; height: 35px; }
+  .deviceTitleRow h3 { font-size: 14px; }
+  .event { flex-wrap: wrap; }
+  .eventDetails { flex-basis: calc(100% - 50px); }
+  .eventTime { margin-left: 44px; padding: 0; text-align: left; }
+  .dialog { padding: 23px; }
+}
