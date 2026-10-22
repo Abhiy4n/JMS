@@ -1,5 +1,7 @@
 # JMS
 
+See [PROGRESS.md](PROGRESS.md) for the timeline and current features, [CUSTOMERS.md](CUSTOMERS.md) for the Customer Folio/document workflow, and [BUSINESS_SOURCES.md](BUSINESS_SOURCES.md) for source management and customer linking.
+
 JMS is organized as a small monorepo with separate frontend and backend services:
 
 ```text
@@ -10,7 +12,7 @@ jms/
 └── README.md
 ```
 
-The frontend runs on `http://localhost:3000`, the Django API runs on `http://localhost:8000`, and PostgreSQL is the database.
+The frontend runs on `http://localhost:3000`, the Django API runs on `http://localhost:8000`, and local development uses SQLite when `DATABASE_URL` is unset. Set `DATABASE_URL` to use PostgreSQL in a deployed/shared environment.
 
 ## Quick Start
 

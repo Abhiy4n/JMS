@@ -1,10 +1,12 @@
 from decimal import Decimal
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from accounts.models import BusinessSource, Customer
-from .models import Bill, BillItem, quantize_money
+from .interest import calculate_credit
+from .models import Bill, BillItem, CreditAdjustment, quantize_money
 
 
 class BillItemSerializer(serializers.ModelSerializer):
@@ -140,6 +142,7 @@ class BillItemSerializer(serializers.ModelSerializer):
 
 
 class BillListFilterSerializer(serializers.Serializer):
+    transaction_type = serializers.ChoiceField(choices=Bill.TransactionType.choices, required=False)
     customer = serializers.IntegerField(required=False, min_value=1)
     business_source = serializers.IntegerField(required=False, min_value=1)
     status = serializers.ChoiceField(choices=Bill.Status.choices, required=False)
@@ -166,6 +169,11 @@ class BillListFilterSerializer(serializers.Serializer):
 
 
 class BillSerializer(serializers.ModelSerializer):
+    customer_type = serializers.CharField(source="credit_customer_type", read_only=True)
+    credit = serializers.SerializerMethodField()
+    interest_paid = serializers.DecimalField(
+        max_digits=14, decimal_places=2, min_value=Decimal("0.00"), required=False,
+    )
     customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all())
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     business_source_id = serializers.IntegerField(source="customer.business_source_id", read_only=True)
@@ -202,8 +210,13 @@ class BillSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "bill_number",
+            "transaction_type",
             "customer",
             "customer_name",
+            "customer_type",
+            "credit",
+            "interest_paid",
+            "interest_enabled",
             "business_source_id",
             "business_source_name",
             "bill_date",
@@ -223,6 +236,7 @@ class BillSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "customer_name",
+            "interest_enabled",
             "business_source_name",
             "subtotal",
             "grand_total",
@@ -233,6 +247,24 @@ class BillSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         bill = self.instance
+        if bill and bill.status == Bill.Status.CANCELLED:
+            raise serializers.ValidationError("Cancelled bills are retained as history and cannot be edited.")
+        if bill and bill.status != Bill.Status.DRAFT and attrs.get("status") == Bill.Status.DRAFT:
+            raise serializers.ValidationError({"status": "An issued bill cannot return to draft."})
+        # Once issued, customer/date identify the credit agreement and cannot be
+        # moved by a bill edit. New payments are cumulative and dated separately.
+        if bill and bill.status != Bill.Status.DRAFT:
+            for field in ("customer", "bill_date", "transaction_type"):
+                if field in attrs and attrs[field] != getattr(bill, field):
+                    raise serializers.ValidationError({field: "Cannot change after the bill is issued."})
+            if attrs.get("amount_paid", bill.amount_paid) < bill.amount_paid:
+                raise serializers.ValidationError({"amount_paid": "Cannot reduce recorded principal payments."})
+        interest_paid = attrs.get("interest_paid", bill.interest_paid if bill else Decimal("0.00"))
+        if interest_paid < (bill.interest_paid if bill else Decimal("0.00")):
+            raise serializers.ValidationError({"interest_paid": "Cannot reduce recorded interest payments."})
+        accrued = Decimal(calculate_credit(bill)["interest_accrued"]) if bill else Decimal("0.00")
+        if interest_paid > accrued:
+            raise serializers.ValidationError({"interest_paid": "Cannot exceed accrued interest."})
         current_discount = bill.discount if bill else Decimal("0.00")
         current_vat = bill.vat if bill else Decimal("0.00")
         current_paid = bill.amount_paid if bill else Decimal("0.00")
@@ -254,6 +286,14 @@ class BillSerializer(serializers.ModelSerializer):
         if amount_paid > grand_total:
             raise serializers.ValidationError({"amount_paid": "Amount paid cannot exceed the grand total."})
         return attrs
+
+    def get_credit(self, obj):
+        return calculate_credit(obj)
+
+    def validate_customer(self, value):
+        if not value.is_active and (self.instance is None or value.pk != self.instance.customer_id):
+            raise serializers.ValidationError("Activate this customer before creating a new bill.")
+        return value
 
     @staticmethod
     def _item_total(item):
@@ -280,10 +320,18 @@ class BillSerializer(serializers.ModelSerializer):
         for item_data in items_data:
             BillItem.objects.create(bill=bill, **item_data)
         bill.recalculate_totals(status_override=status_override)
+        # Creation-time payment is not borrowed principal; only unpaid value
+        # starts accruing the selected customer's interest schedule.
+        bill.credit_customer_type = bill.customer.effective_customer_type
+        bill.credit_interest_amount, bill.credit_basis = bill.customer.credit_terms()
+        bill.initial_credit = bill.amount_due if bill.transaction_type == Bill.TransactionType.SALE else Decimal("0.00")
+        bill.save(update_fields=("credit_customer_type", "credit_interest_amount", "credit_basis", "initial_credit"))
         return bill
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        previous_due = instance.amount_due
+        was_draft = instance.status == Bill.Status.DRAFT
         items_data = validated_data.pop("items", serializers.empty)
         status_override = validated_data.pop("status", None)
         if status_override is None and instance.status in (Bill.Status.DRAFT, Bill.Status.CANCELLED):
@@ -298,4 +346,18 @@ class BillSerializer(serializers.ModelSerializer):
                 BillItem.objects.create(bill=instance, **item_data)
 
         instance.recalculate_totals(status_override=status_override)
+        if was_draft:
+            instance.initial_credit = instance.amount_due if instance.transaction_type == Bill.TransactionType.SALE else Decimal("0.00")
+            instance.credit_customer_type = instance.customer.effective_customer_type
+            instance.credit_interest_amount, instance.credit_basis = instance.customer.credit_terms()
+            instance.save(update_fields=("initial_credit", "credit_customer_type", "credit_interest_amount", "credit_basis"))
+            instance.credit_adjustments.all().delete()
+        elif instance.transaction_type == Bill.TransactionType.SALE and instance.amount_due != previous_due:
+            CreditAdjustment.objects.create(
+                bill=instance, effective_date=max(timezone.localdate(), instance.bill_date),
+                amount=instance.amount_due - previous_due,
+                description="Principal payment / bill adjustment",
+            )
+        # Discard prefetched events after a write so the response includes it.
+        instance._prefetched_objects_cache = {}
         return instance

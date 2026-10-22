@@ -1,15 +1,20 @@
 from decimal import Decimal
 
 from django.db.models import Count, Q, Sum
+from django.db import transaction
+from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import BusinessSource
+from accounts.models import BusinessSource, Customer
 
 from .models import Bill
 from .serializers import BillListFilterSerializer, BillSerializer
+from .interest import calculate_credit
+from .interest import calculate_customer_credit
+from .models import CustomerCredit
 
 
 class BillListCreateView(generics.ListCreateAPIView):
@@ -17,7 +22,7 @@ class BillListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Bill.objects.select_related("customer", "customer__business_source").prefetch_related("items")
+        queryset = Bill.objects.select_related("customer", "customer__business_source").prefetch_related("items", "credit_adjustments")
         search = self.request.query_params.get("search", "").strip()
         filter_params = {
             key: value.strip()
@@ -40,6 +45,8 @@ class BillListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(customer__business_source_id=filters["business_source"])
         if "status" in filters:
             queryset = queryset.filter(status=filters["status"])
+        if "transaction_type" in filters:
+            queryset = queryset.filter(transaction_type=filters["transaction_type"])
         if "bill_date" in filters:
             queryset = queryset.filter(bill_date=filters["bill_date"])
         if "date_from" in filters:
@@ -50,9 +57,20 @@ class BillListCreateView(generics.ListCreateAPIView):
 
 
 class BillDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Bill.objects.select_related("customer", "customer__business_source").prefetch_related("items")
+    queryset = Bill.objects.select_related("customer", "customer__business_source").prefetch_related("items", "credit_adjustments")
     serializer_class = BillSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.method in ("PATCH", "PUT"):
+            # Serialize concurrent payment writes on databases supporting locks.
+            queryset = queryset.select_for_update(of=("self",))
+        return queryset
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
 
 
 class BusinessSourceAccountFiltersSerializer(serializers.Serializer):
@@ -73,6 +91,40 @@ class BusinessSourceAccountFiltersSerializer(serializers.Serializer):
         if date_from and date_to and date_from > date_to:
             raise serializers.ValidationError({"date_to": "Must be on or after date_from."})
         return attrs
+
+
+class CustomerAccountView(APIView):
+    """Customer credit totals and per-bill charges share the same calculation."""
+
+    def get(self, request, customer_id):
+        customer = get_object_or_404(Customer, pk=customer_id)
+        bills = list(Bill.objects.filter(customer=customer).select_related("customer", "customer__business_source").prefetch_related("items", "credit_adjustments"))
+        rows = BillSerializer(bills, many=True).data
+        principal = sum((Decimal(row["credit"]["principal_due"]) for row in rows), Decimal("0.00"))
+        interest = sum((Decimal(row["credit"]["interest_due"]) for row in rows), Decimal("0.00"))
+        credits = list(CustomerCredit.objects.filter(customer=customer).prefetch_related("payments"))
+        credit_calculations = [calculate_customer_credit(credit) for credit in credits]
+        manual_principal = sum((Decimal(item["principal_due"]) for item in credit_calculations), Decimal("0.00"))
+        manual_interest = sum((Decimal(item["interest_due"]) for item in credit_calculations), Decimal("0.00"))
+        legacy_principal = sum((Decimal(row["credit"]["principal_due"]) for row in rows if row["interest_enabled"]), Decimal("0.00"))
+        interest += manual_interest
+        # Portfolio labels use the customer's perspective. Purchase bills are
+        # money the shop owes the customer, not customer credit bearing interest.
+        active_rows = [row for row in rows if row["status"] not in (Bill.Status.DRAFT, Bill.Status.CANCELLED)
+                       and row["bill_date"] <= timezone.localdate().isoformat()]
+        bought = sum((Decimal(row["grand_total"]) for row in active_rows if row["transaction_type"] == Bill.TransactionType.SALE), Decimal("0.00"))
+        sold = sum((Decimal(row["grand_total"]) for row in active_rows if row["transaction_type"] == Bill.TransactionType.PURCHASE), Decimal("0.00"))
+        payable = sum((Decimal(row["amount_due"]) for row in active_rows if row["transaction_type"] == Bill.TransactionType.PURCHASE), Decimal("0.00"))
+        return Response({
+            "customer": {"id": customer.id, "name": customer.name, "customer_type": customer.effective_customer_type},
+            "summary": {"principal_due": f"{principal:.2f}", "interest_due": f"{interest:.2f}",
+                        "total_due": f"{principal + manual_principal + interest:.2f}", "total_bills": len(rows),
+                        "credit_principal_due": f"{manual_principal + legacy_principal:.2f}",
+                        "manual_credit_principal": f"{manual_principal:.2f}",
+                        "total_bought": f"{bought:.2f}", "total_sold": f"{sold:.2f}",
+                        "remaining_balance": f"{principal + manual_principal + interest - payable:.2f}", "payable_due": f"{payable:.2f}"},
+            "bills": rows,
+        })
 
 
 def account_summary(queryset):
@@ -108,7 +160,7 @@ class BusinessSourceAccountView(APIView):
         filters_serializer.is_valid(raise_exception=True)
         filters = filters_serializer.validated_data
 
-        source_bills = Bill.objects.filter(customer__business_source_id=source.id)
+        source_bills = Bill.objects.filter(customer__business_source_id=source.id, transaction_type=Bill.TransactionType.SALE)
         valid_bills = source_bills.exclude(
             status__in=(Bill.Status.DRAFT, Bill.Status.CANCELLED)
         )

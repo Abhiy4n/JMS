@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/auth/api";
 import { getAccessToken } from "@/lib/auth/storage";
+import type { CustomerType } from "@/lib/business-data";
 
 export const BILL_STATUSES = [
   "DRAFT",
@@ -32,10 +33,15 @@ export type BillItem = {
 export type Bill = {
   id: number;
   bill_number: string;
+  transaction_type: "SALE" | "PURCHASE";
   customer: number;
   customer_name: string;
-  business_source_id: number;
+  business_source_id: number | null;
   business_source_name: string;
+  customer_type: CustomerType;
+  interest_paid: string;
+  interest_enabled: boolean;
+  credit: CreditCalculation;
   bill_date: string;
   items: BillItem[];
   subtotal: string;
@@ -49,6 +55,14 @@ export type Bill = {
   notes: string;
   created_at: string;
   updated_at: string;
+};
+
+// Server-calculated values are displayed directly; the browser never accrues money.
+export type CreditCalculation = {
+  as_of: string; period_days: number; interest_per_basis: string; credit_basis: string;
+  periods: number; interest_accrued: string; interest_paid: string; interest_due: string;
+  principal_due: string; total_due: string; next_charge_date: string | null;
+  charges: { period: number; date: string; through_date: string; principal: string; interest: string }[];
 };
 
 export type BillFilters = {
@@ -65,6 +79,7 @@ export type NewBillItem = Omit<BillItem, "id" | "net_weight" | "total">;
 
 export type NewBill = {
   bill_number: string;
+  transaction_type?: "SALE" | "PURCHASE";
   customer: number;
   bill_date: string;
   items: NewBillItem[];
@@ -74,7 +89,7 @@ export type NewBill = {
   payment_method: string;
 };
 
-export type BillUpdate = Partial<NewBill> & { status?: BillStatus };
+export type BillUpdate = Partial<NewBill> & { status?: BillStatus; interest_paid?: string };
 
 export function fetchBills(filters: BillFilters = {}) {
   const query = new URLSearchParams();
