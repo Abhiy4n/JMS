@@ -100,9 +100,11 @@ function formatDrfError(data: unknown, prefix = ""): string {
   return parts.filter(Boolean).join(" ");
 }
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "http://localhost:8000";
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "";
+const loopbackApiUrl = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i;
+const API_URL = process.env.NODE_ENV === "production" && loopbackApiUrl.test(configuredApiUrl)
+  ? ""
+  : configuredApiUrl || (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000");
 
 let refreshInFlight: Promise<string> | null = null;
 

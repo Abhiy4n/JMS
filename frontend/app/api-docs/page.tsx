@@ -1,6 +1,10 @@
 import { Braces, KeyRound, ServerCog } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "";
+const loopbackApiUrl = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i;
+const API_URL = process.env.NODE_ENV === "production" && loopbackApiUrl.test(configuredApiUrl)
+  ? "Same origin"
+  : configuredApiUrl || (process.env.NODE_ENV === "production" ? "Same origin" : "http://localhost:8000");
 
 export default function Page() {
   return (
