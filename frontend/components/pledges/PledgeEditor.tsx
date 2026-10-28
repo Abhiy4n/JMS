@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
+import DatePicker from "@/components/date-picker/DatePicker";
+import Select from "@/components/select/Select";
 import { ApiError } from "@/lib/auth/api";
 import { type Customer, fetchCustomers } from "@/lib/business-data";
 import { createPledge, updatePledge, getPledge, type Pledge, type NewPledgeItem } from "@/lib/pledge-data";
@@ -312,21 +314,24 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
               removeItem: (index) => removeItem(items[index].key),
               itemActionsDisabled: submitting,
               customer: <>
-                <select aria-label="कारोबारी — Customer" required value={customerId} disabled={submitting || customersLoading || Boolean(customerError)}
-                  aria-invalid={Boolean(fieldErrors.customer)} aria-describedby={fieldErrors.customer ? "paper-customer-error" : undefined}
-                  onChange={(event) => { setCustomerId(event.target.value); clearFieldError("customer"); }}>
-                  <option value="">कारोबारी छान्नुहोस्</option>
-                  {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · #{customer.id}{customer.phone ? ` · ${customer.phone}` : ""}</option>)}
-                </select>
+                <Select aria-label="कारोबारी — Customer" value={customerId} disabled={submitting || customersLoading || Boolean(customerError)} aria-invalid={Boolean(fieldErrors.customer)} aria-describedby={fieldErrors.customer ? "paper-customer-error" : undefined}
+                  options={[{ value: "", label: "कारोबारी छान्नुहोस्" }, ...customers.map((customer) => ({ value: String(customer.id), label: `${customer.name} · #${customer.id}${customer.phone ? ` · ${customer.phone}` : ""}` }))]}
+                  onChange={(value) => { setCustomerId(value); clearFieldError("customer"); }} />
                 {fieldErrors.customer && <span id="paper-customer-error" data-field-error lang="en">{fieldErrors.customer}</span>}
               </>,
               amountReceived: <PaperInput id="paper-amount" label="लिएको रकम — Amount received (NPR)" required type="number" min="0" max="999999999999.99" step="0.01" inputMode="decimal"
                 value={amountReceived} disabled={submitting} error={fieldErrors.amount_received}
                 onChange={(event) => { setAmountReceived(event.target.value); clearFieldError("amount_received"); }} />,
-              pledgeDate: <PaperInput id="paper-date" label="मिति — Pledge date (AD)" required type="date" value={pledgeDate} disabled={submitting} error={fieldErrors.pledge_date}
-                onChange={(event) => { setPledgeDate(event.target.value); clearFieldError("pledge_date"); }} />,
-              dueDate: <PaperInput id="paper-due" label="भाका — Due date (optional)" type="date" min={pledgeDate || undefined} value={dueDate} disabled={submitting} error={fieldErrors.due_date}
-                onChange={(event) => { setDueDate(event.target.value); clearFieldError("due_date"); }} />,
+              pledgeDate: <>
+                <DatePicker id="paper-date" aria-label="मिति — Pledge date (AD)" required value={pledgeDate} disabled={submitting} aria-invalid={Boolean(fieldErrors.pledge_date)} aria-describedby={fieldErrors.pledge_date ? "paper-date-error" : undefined}
+                  onChange={(value) => { setPledgeDate(value); clearFieldError("pledge_date"); }} />
+                {fieldErrors.pledge_date && <span id="paper-date-error" data-field-error lang="en">{fieldErrors.pledge_date}</span>}
+              </>,
+              dueDate: <>
+                <DatePicker id="paper-due" aria-label="भाका — Due date (optional)" min={pledgeDate || undefined} value={dueDate} disabled={submitting} aria-invalid={Boolean(fieldErrors.due_date)} aria-describedby={fieldErrors.due_date ? "paper-due-error" : undefined}
+                  onChange={(value) => { setDueDate(value); clearFieldError("due_date"); }} />
+                {fieldErrors.due_date && <span id="paper-due-error" data-field-error lang="en">{fieldErrors.due_date}</span>}
+              </>,
               itemDescription: (index) => {
                 const item = items[index];
                 const error = itemErrors[item.key]?.description;

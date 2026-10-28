@@ -8,7 +8,13 @@ const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("next/dist/compiled/ws");
 const base = process.env.JMS_TEST_URL || "http://localhost:3100";
-const chromePath = process.env.CHROME_PATH || "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const chromePath = process.env.CHROME_PATH || (
+  process.platform === "win32"
+    ? "C:/Program Files/Google/Chrome/Application/chrome.exe"
+    : process.platform === "darwin"
+      ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      : "chromium"
+);
 const port = 9228;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

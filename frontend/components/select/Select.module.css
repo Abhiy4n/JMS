@@ -29,6 +29,10 @@
   box-shadow: 0 0 0 3px var(--app-focus-ring);
 }
 
+.trigger[aria-invalid="true"] {
+  border-color: color-mix(in srgb, #c74449, var(--app-tone-target) var(--app-tone));
+}
+
 .trigger:disabled {
   cursor: not-allowed;
   opacity: .55;

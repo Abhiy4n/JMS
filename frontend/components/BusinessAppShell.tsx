@@ -11,6 +11,7 @@ import {
   ChevronDown,
   CircleHelp,
   CircleDollarSign,
+  CreditCard,
   FileText,
   Gem,
   ImageUp,
@@ -307,6 +308,15 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
                   onClick={() => setMenuOpen(false)}
                 >
                   <CircleDollarSign aria-hidden="true" /><span>Paid / unpaid bills</span>
+                </Link>
+                <Link
+                  className={`${styles.navItem} ${styles.navSubItem} ${pathname === "/accounts/credit" ? styles.navItemActive : ""}`}
+                  href="/accounts/credit"
+                  aria-current={pathname === "/accounts/credit" ? "page" : undefined}
+                  title={navTitle("Customer credit")}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <CreditCard aria-hidden="true" /><span>Customer credit</span>
                 </Link>
               </div>
             </div>

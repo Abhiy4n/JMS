@@ -6,6 +6,8 @@ import { Eye, Plus, RotateCcw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
+import DatePicker from "@/components/date-picker/DatePicker";
+import Select from "@/components/select/Select";
 import {
   PLEDGE_STATUSES,
   fetchPledges,
@@ -146,41 +148,38 @@ function PledgeRecords() {
               placeholder="Pledge number or customer..."
             />
           </label>
-          <label className="filter-select-wrap">
+          <div className="filter-select-wrap">
             <span className="sr-only">Filter by status</span>
-            <select
+            <Select
               aria-label="Filter by status"
               value={status}
-              onChange={(event) => setStatus(event.target.value as PledgeStatus | "")}
-            >
-              <option value="">All statuses</option>
-              {PLEDGE_STATUSES.map((pledgeStatus) => (
-                <option key={pledgeStatus} value={pledgeStatus}>{STATUS_LABELS[pledgeStatus]}</option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-select-wrap pledge-date-filter">
+              options={[
+                { value: "", label: "All statuses" },
+                ...PLEDGE_STATUSES.map((pledgeStatus) => ({ value: pledgeStatus, label: STATUS_LABELS[pledgeStatus] })),
+              ]}
+              onChange={setStatus}
+            />
+          </div>
+          <div className="filter-select-wrap pledge-date-filter">
             <span className="sr-only">Pledge date from</span>
-            <input
+            <DatePicker
               aria-label="Pledge date from"
-              type="date"
               value={dateFrom}
               max={dateTo || undefined}
-              onChange={(event) => setDateFrom(event.target.value)}
+              onChange={setDateFrom}
             />
-          </label>
-          <label className="filter-select-wrap pledge-date-filter">
+          </div>
+          <div className="filter-select-wrap pledge-date-filter">
             <span className="sr-only">Pledge date to</span>
-            <input
+            <DatePicker
               aria-label="Pledge date to"
-              type="date"
               value={dateTo}
               min={dateFrom || undefined}
               aria-invalid={Boolean(dateRangeError)}
               aria-describedby={dateRangeError ? "pledge-records-date-error" : undefined}
-              onChange={(event) => setDateTo(event.target.value)}
+              onChange={setDateTo}
             />
-          </label>
+          </div>
           <button
             className="button button-secondary button-small"
             type="button"
@@ -225,12 +224,6 @@ function PledgeRecords() {
                       ? "Try adjusting or clearing the filters."
                       : "Customer pledge records will appear here after they are created."}
                   </span>
-                  {!hasFilters && (
-                    <Link className="button button-primary button-small" href="/pledges/new">
-                      <Plus size={14} aria-hidden="true" />
-                      Create Pledge
-                    </Link>
-                  )}
                 </td>
               </tr>
             ) : pledges.map((pledge) => (

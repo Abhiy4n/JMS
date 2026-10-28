@@ -1,0 +1,361 @@
+/*
+ * Visual bridge for modules merged after the main application redesign.
+ * These selectors intentionally reuse the established app tokens so the
+ * newer business, accounts, credit, and folio screens follow every theme.
+ */
+
+.integrated-module {
+  display: grid;
+  gap: 0;
+}
+
+.integrated-module .page-heading {
+  align-items: center;
+}
+
+.integrated-module .page-heading h1 {
+  font-size: clamp(1.75rem, 2.4vw, 2.15rem);
+  letter-spacing: -.035em;
+}
+
+.integrated-module .button svg,
+.module-actions .button svg,
+.empty-message .button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
+}
+
+.integrated-module .module-actions {
+  margin: -69px 0 27px;
+  pointer-events: none;
+}
+
+.integrated-module .module-actions .button {
+  pointer-events: auto;
+}
+
+.metric-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 13px;
+  color: var(--app-text) !important;
+  background: var(--app-surface) !important;
+  box-shadow: 0 2px 10px var(--app-shadow);
+}
+
+.metric-card::after {
+  position: absolute;
+  inset: auto -22px -30px auto;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--app-accent);
+  content: "";
+  opacity: .025;
+}
+
+.metric-card > .metric-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--app-text-strong) !important;
+  background: var(--app-chip);
+}
+
+.metric-icon svg {
+  width: 19px;
+  height: 19px;
+  stroke-width: 1.7;
+}
+
+.metric-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.metric-card > div > span {
+  color: var(--app-muted) !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+
+.metric-card > div > strong {
+  margin: 0 !important;
+  overflow: hidden;
+  color: var(--app-text-strong) !important;
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-card small {
+  overflow: hidden;
+  color: var(--app-subtle);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portfolio-kpis.business-source-kpis,
+.portfolio-kpis.credit-kpis {
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.portfolio-kpis.credit-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.integrated-module .table-toolbar {
+  min-height: 68px;
+  padding: 11px 14px;
+}
+
+.integrated-module .local-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  border: 1px solid var(--app-border);
+  border-radius: 9px;
+  color: var(--app-subtle);
+}
+
+.integrated-module .local-search:focus-within {
+  border-color: var(--app-focus);
+  box-shadow: 0 0 0 3px var(--app-focus-ring);
+}
+
+.integrated-module .local-search .search-glyph {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-right: 8px;
+  stroke-width: 1.8;
+}
+
+.integrated-module .local-search input {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  color: var(--app-text-strong);
+  background: transparent;
+}
+
+.integrated-module .data-table-wrap {
+  box-shadow: 0 4px 18px var(--app-shadow);
+}
+
+.integrated-module .data-table tbody tr {
+  transition: background 130ms ease;
+}
+
+.integrated-module .data-table td {
+  height: 64px;
+}
+
+.business-source-module .record-count,
+.customer-directory .record-count {
+  color: var(--app-muted);
+  background: var(--app-chip);
+}
+
+.business-source-name-button:hover,
+.customer-directory .customer-folio-link:hover,
+.business-source-details-window .source-customer-row:hover {
+  color: var(--app-text-strong);
+  background: var(--app-surface-muted);
+}
+
+.business-source-name-button:focus-visible,
+.customer-directory .customer-folio-link:focus-visible,
+.customer-directory .bhaka-patra-row:focus-visible {
+  outline-color: var(--app-focus);
+}
+
+.business-source-details-window .modal-heading,
+.customer-folio-window > .modal-heading {
+  border-bottom-color: var(--app-border);
+}
+
+.business-source-details-window .modal-heading h2,
+.business-source-details-window .source-detail-grid dt,
+.business-source-details-window .form-field > span,
+.business-source-editor .modal-heading h2,
+.business-source-editor .form-field > span,
+.customer-folio-window > .modal-heading h2,
+.customer-directory .table-title-group h2,
+.customer-folio-content .folio-contact-panel h3 {
+  color: var(--app-text-strong);
+}
+
+.credit-directory .data-table {
+  min-width: 1050px;
+}
+
+.credit-directory .empty-message > svg {
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 4px auto 10px;
+  color: var(--app-subtle);
+  stroke-width: 1.5;
+}
+
+.credit-directory .empty-message .button {
+  width: fit-content;
+  margin: 14px auto 5px;
+}
+
+.credit-summary-grid > div {
+  padding: 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 11px;
+  color: var(--app-muted);
+  background: var(--app-surface-muted);
+  font-size: 12px;
+}
+
+.credit-summary-grid > div strong {
+  color: var(--app-text-strong);
+  font-size: 20px;
+}
+
+.source-detail-grid dt,
+.folio-contact-panel dt {
+  color: var(--app-muted);
+}
+
+.source-customer-row {
+  border-bottom-color: var(--app-border-soft);
+}
+
+.bhaka-preview-panel {
+  background: var(--app-canvas);
+}
+
+.api-overview {
+  display: grid;
+  gap: 24px;
+}
+
+.api-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.api-card {
+  display: grid;
+  min-height: 180px;
+  align-content: start;
+  gap: 10px;
+  padding: 21px;
+  border: 1px solid var(--app-border);
+  border-radius: 13px;
+  color: var(--app-text);
+  background: var(--app-surface);
+  box-shadow: 0 3px 14px var(--app-shadow);
+}
+
+.api-card > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  margin-bottom: 3px;
+  border-radius: 10px;
+  color: var(--app-text-strong);
+  background: var(--app-chip);
+}
+
+.api-card svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.7;
+}
+
+.api-card h2,
+.api-card p {
+  margin: 0;
+}
+
+.api-card h2 {
+  color: var(--app-text-strong);
+  font-size: 16px;
+}
+
+.api-card p {
+  color: var(--app-muted);
+  line-height: 1.6;
+}
+
+.api-base-url {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  color: var(--app-muted);
+  background: var(--app-surface-muted);
+}
+
+.api-base-url code {
+  color: var(--app-text-strong);
+  font: 13px var(--font-geist-mono), monospace;
+}
+
+@media (max-width: 1000px) {
+  .portfolio-kpis.credit-kpis,
+  .api-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .integrated-module .page-heading {
+    align-items: flex-start;
+  }
+
+  .integrated-module .module-actions {
+    justify-content: stretch;
+    margin: 0 0 18px;
+  }
+
+  .integrated-module .module-actions .button,
+  .integrated-module .page-heading > .button {
+    width: 100%;
+  }
+
+  .integrated-module .table-toolbar,
+  .integrated-module .table-filters {
+    align-items: stretch;
+  }
+
+  .integrated-module .local-search,
+  .integrated-module .filter-select-wrap select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .api-base-url {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

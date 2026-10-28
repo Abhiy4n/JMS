@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import CustomerDialog from "@/components/CustomerDialog";
+import DatePicker from "@/components/date-picker/DatePicker";
+import Select from "@/components/select/Select";
 import {
   type AccountHistoryStatus,
   type AccountSummary,
@@ -293,63 +295,55 @@ export default function BusinessSourceDetailPage() {
                   placeholder="Bill number or customer..."
                 />
               </label>
-              <label className="filter-select-wrap">
-                <span className="sr-only">Filter bill status</span>
-                <select
+              <div className="filter-select-wrap">
+                <Select
                   aria-label="Filter bill status"
                   value={accountStatus}
-                  onChange={(event) => {
+                  options={HISTORY_STATUSES}
+                  onChange={(value) => {
                     setHistoryPage(1);
-                    setAccountStatus(event.target.value as AccountHistoryStatus);
+                    setAccountStatus(value);
                   }}
-                >
-                  {HISTORY_STATUSES.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="filter-select-wrap source-period-select">
-                <span className="sr-only">Date range preset</span>
-                <select
+                />
+              </div>
+              <div className="filter-select-wrap source-period-select">
+                <Select
                   aria-label="Date range preset"
                   value={datePreset}
-                  onChange={(event) => updateDatePreset(event.target.value as DatePreset)}
-                >
-                  <option value="ALL">All dates</option>
-                  <option value="TODAY">Today</option>
-                  <option value="THIS_MONTH">This month</option>
-                  <option value="PREVIOUS_MONTH">Previous month</option>
-                  <option value="CUSTOM">Custom range</option>
-                </select>
-              </label>
-              <label className="filter-select-wrap source-date-filter">
-                <span className="sr-only">Date from</span>
-                <input
-                  type="date"
+                  options={[
+                    { value: "ALL", label: "All dates" },
+                    { value: "TODAY", label: "Today" },
+                    { value: "THIS_MONTH", label: "This month" },
+                    { value: "PREVIOUS_MONTH", label: "Previous month" },
+                    { value: "CUSTOM", label: "Custom range" },
+                  ]}
+                  onChange={updateDatePreset}
+                />
+              </div>
+              <div className="filter-select-wrap source-date-filter">
+                <DatePicker
                   aria-label="Date from"
                   value={dateFrom}
                   max={dateTo || undefined}
-                  onChange={(event) => {
+                  onChange={(value) => {
                     setHistoryPage(1);
                     setDatePreset("CUSTOM");
-                    setDateFrom(event.target.value);
+                    setDateFrom(value);
                   }}
                 />
-              </label>
-              <label className="filter-select-wrap source-date-filter">
-                <span className="sr-only">Date to</span>
-                <input
-                  type="date"
+              </div>
+              <div className="filter-select-wrap source-date-filter">
+                <DatePicker
                   aria-label="Date to"
                   value={dateTo}
                   min={dateFrom || undefined}
-                  onChange={(event) => {
+                  onChange={(value) => {
                     setHistoryPage(1);
                     setDatePreset("CUSTOM");
-                    setDateTo(event.target.value);
+                    setDateTo(value);
                   }}
                 />
-              </label>
+              </div>
               <button
                 className="button button-secondary button-small"
                 type="button"

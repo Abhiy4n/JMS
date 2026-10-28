@@ -32,6 +32,8 @@ type SelectProps<T extends string> = {
   disabled?: boolean;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
 };
 
 type MenuPosition = { top: number; left: number; width: number; maxHeight: number; placement: "below" | "above" };
@@ -50,6 +52,8 @@ export default function Select<T extends string>({
   disabled,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
 }: SelectProps<T>) {
   const generatedId = useId();
   const triggerId = id ?? `select-${generatedId}`;
@@ -202,6 +206,8 @@ export default function Select<T extends string>({
         aria-activedescendant={open && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy ? `${ariaLabelledBy} ${triggerId}` : undefined}
+        aria-invalid={ariaInvalid || undefined}
+        aria-describedby={ariaDescribedBy}
         disabled={disabled}
         data-open={open}
         onClick={() => (open ? closeMenu() : openMenu())}

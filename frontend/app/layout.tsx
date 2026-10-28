@@ -4,6 +4,7 @@ import { Geist_Mono, Inter } from "next/font/google";
 import { ToastProvider } from "@/components/toast/ToastProvider";
 import AppChrome from "@/components/AppChrome";
 import "./globals.css";
+import "./reconciliation.css";
 
 const inter = Inter({
   variable: "--font-inter",

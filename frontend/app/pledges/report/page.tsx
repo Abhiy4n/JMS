@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
+import DatePicker from "@/components/date-picker/DatePicker";
+import Select from "@/components/select/Select";
 import { fetchPledges, PLEDGE_STATUSES, type Pledge, type PledgeStatus } from "@/lib/pledge-data";
 import { filterRegisterPledges, formatRecordedAmount, groupPledgesByCustomer, summarizePledges } from "@/lib/pledge-report";
 import { userFacingError } from "@/lib/user-facing-error";
@@ -135,29 +137,35 @@ function CustomerPledgeRegister() {
             <span>Item search</span>
             <input id="pledge-report-item" type="search" placeholder="Saved item description" value={itemSearch} onChange={(event) => updateFilter("item_search", event.target.value)} />
           </label>
-          <label className="form-field" htmlFor="pledge-report-from">
-            <span>Pledge date from</span>
-            <input id="pledge-report-from" type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => updateFilter("date_from", event.target.value)} />
-          </label>
-          <label className="form-field" htmlFor="pledge-report-to">
-            <span>Pledge date to</span>
-            <input
+          <div className="form-field">
+            <span id="pledge-report-from-label">Pledge date from</span>
+            <DatePicker id="pledge-report-from" aria-labelledby="pledge-report-from-label" value={dateFrom} max={dateTo || undefined} onChange={(value) => updateFilter("date_from", value)} />
+          </div>
+          <div className="form-field">
+            <span id="pledge-report-to-label">Pledge date to</span>
+            <DatePicker
               id="pledge-report-to"
-              type="date"
+              aria-labelledby="pledge-report-to-label"
               value={dateTo}
               min={dateFrom || undefined}
               aria-invalid={Boolean(dateRangeError)}
               aria-describedby={dateRangeError ? "pledge-report-date-error" : undefined}
-              onChange={(event) => updateFilter("date_to", event.target.value)}
+              onChange={(value) => updateFilter("date_to", value)}
             />
-          </label>
-          <label className="form-field" htmlFor="pledge-report-status">
-            <span>Status</span>
-            <select id="pledge-report-status" value={status} onChange={(event) => updateFilter("status", event.target.value)}>
-              <option value="">All statuses</option>
-              {PLEDGE_STATUSES.map((value) => <option key={value} value={value}>{STATUS_LABELS[value]}</option>)}
-            </select>
-          </label>
+          </div>
+          <div className="form-field">
+            <span id="pledge-report-status-label">Status</span>
+            <Select
+              id="pledge-report-status"
+              aria-labelledby="pledge-report-status-label"
+              value={status}
+              options={[
+                { value: "", label: "All statuses" },
+                ...PLEDGE_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] })),
+              ]}
+              onChange={(value) => updateFilter("status", value)}
+            />
+          </div>
           <button className="button button-secondary" type="button" disabled={!hasFilters} onClick={clearFilters}>
             <RotateCcw size={14} aria-hidden="true" />Clear filters
           </button>

@@ -1,4 +1,5 @@
 import { customerBhakaPatras, bhakaPatraSummary, formatBhakaPatraMoney, formatBhakaPatraAmount, type CustomerBhakaPatraRecord, type BhakaPatraOrdering } from "@/lib/customer-bhaka-patra";
+import Select from "@/components/select/Select";
 
 export type { CustomerBhakaPatraRecord } from "@/lib/customer-bhaka-patra";
 export type CustomerBhakaPatraActions = {
@@ -19,7 +20,7 @@ export default function CustomerBhakaPatraOverview({ customerId, records = [], a
       <section className="bill-detail-panel"><span>Total Interest Amount</span><strong>{formatBhakaPatraMoney(summary.interestPaisa)}</strong></section>
     </div>
     <div className="table-toolbar customer-folio-toolbar"><div className="table-title-group"><h2 id="customer-bhaka-patra-title">Bhaka Patras</h2><span className="record-count">{summary.count}</span></div>
-      {onOrderingChange && <label className="filter-select-wrap"><span className="sr-only">Sort folio records</span><select aria-label="Sort folio records" value={ordering} onChange={(event) => onOrderingChange(event.target.value as BhakaPatraOrdering)}><option value="first_added">First created first</option><option value="recently_added">Last created first</option></select></label>}
+      {onOrderingChange && <div className="filter-select-wrap"><Select aria-label="Sort folio records" value={ordering} options={[{ value: "first_added", label: "First created first" }, { value: "recently_added", label: "Last created first" }]} onChange={onOrderingChange} /></div>}
     </div>
     <div className="data-table-wrap"><table className="data-table bhaka-patra-table">
       <thead><tr><th scope="col">SN</th><th scope="col">Rakha Patra Number</th><th scope="col">Rakha Patra Amount</th><th scope="col">Purchased Items</th></tr></thead>

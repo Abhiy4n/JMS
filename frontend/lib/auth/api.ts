@@ -67,6 +67,9 @@ export class ApiError extends Error {
 
 function formatDrfError(data: unknown, prefix = ""): string {
   if (typeof data === "string") {
+    // Production Django error pages are HTML. Never surface that markup in a
+    // toast; callers receive the concise fallback message below instead.
+    if (/<!doctype html|<html[\s>]/i.test(data)) return "";
     return prefix ? `${prefix}: ${data}` : data;
   }
 
@@ -182,8 +185,11 @@ export async function apiRequest<T>(
 
   const data = await parseResponse(response);
   if (!response.ok) {
+    const fallback = response.status >= 500
+      ? "The server could not complete this request. Please try again."
+      : "Something went wrong. Please try again.";
     throw new ApiError(
-      formatDrfError(data) || "Something went wrong. Please try again.",
+      formatDrfError(data) || fallback,
       response.status,
       data
     );

@@ -889,7 +889,8 @@ textarea:focus-visible {
   min-width: 0;
 }
 
-.filter-select-wrap select {
+.filter-select-wrap select,
+.filter-select-wrap > button {
   max-width: 190px;
   height: 40px;
   padding: 0 26px 0 10px;
@@ -1087,7 +1088,8 @@ textarea:focus-visible {
   min-width: 220px;
 }
 
-.pledge-date-filter input {
+.pledge-date-filter input,
+.pledge-date-filter > button {
   width: 145px;
   height: 34px;
   padding: 0 8px;
@@ -1532,7 +1534,8 @@ textarea:focus-visible {
   width: min(230px, 28vw);
 }
 
-.bill-date-filter input {
+.bill-date-filter input,
+.bill-date-filter > button {
   width: 145px;
   height: 40px;
   padding: 0 8px;
@@ -2297,7 +2300,8 @@ textarea:focus-visible {
   width: min(270px, 100%);
 }
 
-.source-date-filter input {
+.source-date-filter input,
+.source-date-filter > button {
   width: 145px;
   height: 40px;
   padding: 0 8px;
@@ -2571,7 +2575,8 @@ textarea:focus-visible {
     flex: 1 1 135px;
   }
 
-  .bill-date-filter input {
+  .bill-date-filter input,
+  .bill-date-filter > button {
     width: 100%;
   }
 
@@ -2579,7 +2584,8 @@ textarea:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .filter-select-wrap select {
+  .filter-select-wrap select,
+  .filter-select-wrap > button {
     max-width: 150px;
   }
 
@@ -2615,7 +2621,8 @@ textarea:focus-visible {
     flex-basis: 100%;
   }
 
-  .source-date-filter input {
+  .source-date-filter input,
+  .source-date-filter > button {
     width: 100%;
   }
 

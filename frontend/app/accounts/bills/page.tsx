@@ -5,6 +5,8 @@ import Link from "next/link";
 import { RotateCcw, Trash2 } from "lucide-react";
 
 import { useToast } from "@/components/toast/ToastProvider";
+import DatePicker from "@/components/date-picker/DatePicker";
+import Select from "@/components/select/Select";
 import {
   BILL_STATUSES,
   deleteBill,
@@ -290,70 +292,51 @@ function AccountBillsList() {
               placeholder="Bill number, customer, source..."
             />
           </label>
-          <label className="filter-select-wrap">
-            <span className="sr-only">Filter bill status</span>
-            <select
+          <div className="filter-select-wrap">
+            <Select
               aria-label="Filter bill status"
               value={status}
-              onChange={(event) => setStatus(event.target.value as BillStatus | "")}
-            >
-              <option value="">All statuses</option>
-              {BILL_STATUSES.map((billStatus) => (
-                <option key={billStatus} value={billStatus}>{STATUS_LABELS[billStatus]}</option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-select-wrap">
-            <span className="sr-only">Filter by business source</span>
-            <select
+              options={[{ value: "", label: "All statuses" }, ...BILL_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))]}
+              onChange={setStatus}
+            />
+          </div>
+          <div className="filter-select-wrap">
+            <Select
               aria-label="Filter by business source"
               value={businessSource}
               disabled={filtersLoading}
-              onChange={(event) => {
-                setBusinessSource(event.target.value);
+              options={[{ value: "", label: "All business sources" }, ...sources.map((source) => ({ value: String(source.id), label: source.name }))]}
+              onChange={(value) => {
+                setBusinessSource(value);
                 setCustomer("");
               }}
-            >
-              <option value="">All business sources</option>
-              {sources.map((source) => (
-                <option key={source.id} value={source.id}>{source.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-select-wrap">
-            <span className="sr-only">Filter by customer</span>
-            <select
+            />
+          </div>
+          <div className="filter-select-wrap">
+            <Select
               aria-label="Filter by customer"
               value={customer}
               disabled={filtersLoading}
-              onChange={(event) => setCustomer(event.target.value)}
-            >
-              <option value="">All customers</option>
-              {visibleCustomers.map((entry) => (
-                <option key={entry.id} value={entry.id}>{entry.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-select-wrap bill-date-filter">
-            <span className="sr-only">From date</span>
-            <input
+              options={[{ value: "", label: "All customers" }, ...visibleCustomers.map((entry) => ({ value: String(entry.id), label: entry.name }))]}
+              onChange={setCustomer}
+            />
+          </div>
+          <div className="filter-select-wrap bill-date-filter">
+            <DatePicker
               aria-label="From date"
-              type="date"
               value={dateFrom}
               max={dateTo || undefined}
-              onChange={(event) => setDateFrom(event.target.value)}
+              onChange={setDateFrom}
             />
-          </label>
-          <label className="filter-select-wrap bill-date-filter">
-            <span className="sr-only">To date</span>
-            <input
+          </div>
+          <div className="filter-select-wrap bill-date-filter">
+            <DatePicker
               aria-label="To date"
-              type="date"
               value={dateTo}
               min={dateFrom || undefined}
-              onChange={(event) => setDateTo(event.target.value)}
+              onChange={setDateTo}
             />
-          </label>
+          </div>
           <button
             className="button button-secondary button-small bill-clear-button"
             type="button"

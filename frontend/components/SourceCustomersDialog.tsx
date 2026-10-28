@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BUSINESS_SOURCE_TYPE_LABELS, fetchCustomers, linkCustomerToSource, type BusinessSource, type Customer } from "@/lib/business-data";
 import { userFacingError } from "@/lib/user-facing-error";
 import { useDialog } from "@/lib/use-dialog";
+import Select from "@/components/select/Select";
 
 export default function SourceCustomersDialog({ source, onClose, onChanged, onAddCustomer }: {
   source: BusinessSource; onClose: () => void; onChanged: () => void; onAddCustomer: () => void;
@@ -58,7 +59,7 @@ export default function SourceCustomersDialog({ source, onClose, onChanged, onAd
       {loading ? <p>Loading customers...</p> : error ? <button type="button" className="button button-secondary" onClick={() => { setLoading(true); setReload((key) => key + 1); }}>Retry loading customers</button> : <div className="source-customer-list">
         {customers.length === 0 ? <p>No customers linked yet.</p> : customers.map((customer) => <Link key={customer.id} href={`/customers?customer=${customer.id}`} className="source-customer-row"><strong>{customer.name}</strong><span>{customer.phone || "No phone"}</span><small>{customer.email || "No email"}</small></Link>)}
       </div>}
-      {!loading && !error && available.length > 0 && <div className="form-stack"><label className="form-field"><span>Link an existing customer</span><select disabled={saving} value={customerId} onChange={(event) => setCustomerId(event.target.value)}><option value="">Select customer</option>{available.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
+      {!loading && !error && available.length > 0 && <div className="form-stack"><div className="form-field"><span id="link-customer-label">Link an existing customer</span><Select aria-labelledby="link-customer-label" disabled={saving} value={customerId} options={[{ value: "", label: "Select customer" }, ...available.map((customer) => ({ value: String(customer.id), label: customer.name }))]} onChange={setCustomerId} /></div>
         <button className="button button-secondary" type="button" disabled={!customerId || saving} onClick={linkCustomer}>{saving ? "Linking..." : "Link customer"}</button></div>}
       <div className="modal-actions"><button className="button button-primary" type="button" disabled={saving} onClick={onAddCustomer}>Add customer</button></div>
     </section>

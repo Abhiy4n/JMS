@@ -6,6 +6,8 @@ import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
 import { useToast } from "@/components/toast/ToastProvider";
+import DatePicker from "@/components/date-picker/DatePicker";
+import Select from "@/components/select/Select";
 import { BILL_STATUSES, deleteBill, type Bill, type BillStatus, fetchBills } from "@/lib/bill-data";
 import { userFacingError } from "../../lib/user-facing-error";
 
@@ -159,39 +161,30 @@ function BillsList() {
               placeholder="Bill number or customer..."
             />
           </label>
-          <label className="filter-select-wrap">
-            <span className="sr-only">Filter by status</span>
-            <select
+          <div className="filter-select-wrap">
+            <Select
               aria-label="Filter by status"
               value={status}
-              onChange={(event) => setStatus(event.target.value as BillStatus | "")}
-            >
-              <option value="">All statuses</option>
-              {BILL_STATUSES.map((billStatus) => (
-                <option key={billStatus} value={billStatus}>{STATUS_LABELS[billStatus]}</option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-select-wrap bill-date-filter">
-            <span className="sr-only">From date</span>
-            <input
+              options={[{ value: "", label: "All statuses" }, ...BILL_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))]}
+              onChange={setStatus}
+            />
+          </div>
+          <div className="filter-select-wrap bill-date-filter">
+            <DatePicker
               aria-label="From date"
-              type="date"
               value={dateFrom}
               max={dateTo || undefined}
-              onChange={(event) => setDateFrom(event.target.value)}
+              onChange={setDateFrom}
             />
-          </label>
-          <label className="filter-select-wrap bill-date-filter">
-            <span className="sr-only">To date</span>
-            <input
+          </div>
+          <div className="filter-select-wrap bill-date-filter">
+            <DatePicker
               aria-label="To date"
-              type="date"
               value={dateTo}
               min={dateFrom || undefined}
-              onChange={(event) => setDateTo(event.target.value)}
+              onChange={setDateTo}
             />
-          </label>
+          </div>
           <button
             className="button button-secondary button-small bill-clear-button"
             type="button"

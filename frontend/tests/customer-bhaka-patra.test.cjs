@@ -11,7 +11,15 @@ function loadSource(relativePath) {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
   const loaded = { exports: {} };
-  const localRequire = (name) => name.startsWith("@/") ? loadSource(`${name.slice(2)}.ts`) : require(name);
+  const localRequire = (name) => {
+    if (name.endsWith(".module.css")) return {};
+    if (name.startsWith("@/")) {
+      const sourcePath = path.resolve(__dirname, "..", name.slice(2));
+      const extension = fs.existsSync(`${sourcePath}.ts`) ? ".ts" : ".tsx";
+      return loadSource(`${name.slice(2)}${extension}`);
+    }
+    return require(name);
+  };
   new Function("require", "module", "exports", compiled)(localRequire, loaded, loaded.exports);
   return loaded.exports;
 }

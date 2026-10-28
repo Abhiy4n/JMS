@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import CustomerDialog from "@/components/CustomerDialog";
+import Select from "@/components/select/Select";
 import {
   type BusinessSource,
   type Customer,
@@ -98,19 +99,17 @@ function CustomersDirectory() {
               placeholder="Name, phone, email..."
             />
           </label>
-          <label className="filter-select-wrap">
-            <span className="sr-only">Filter by source</span>
-            <select
+          <div className="filter-select-wrap">
+            <Select
+              aria-label="Filter by source"
               value={sourceFilter}
-              onChange={(event) => {
+              options={[{ value: "", label: "All sources" }, ...sources.map((source) => ({ value: String(source.id), label: source.name }))]}
+              onChange={(value) => {
                 setLoading(true);
-                setSourceFilter(event.target.value);
+                setSourceFilter(value);
               }}
-            >
-              <option value="">All sources</option>
-              {sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
-            </select>
-          </label>
+            />
+          </div>
         </div>
       </div>
 

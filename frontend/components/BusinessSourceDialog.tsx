@@ -4,6 +4,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { BUSINESS_SOURCE_INTEREST_TYPES, CUSTOMER_TYPES, CUSTOMER_TYPE_LABELS, createBusinessSource, updateBusinessSource, isValidContactEmail, type BusinessSource, type BusinessSourceInterestType, type NewBusinessSource, type CustomerType } from "@/lib/business-data";
 import { userFacingError } from "@/lib/user-facing-error";
 import { useDialog } from "@/lib/use-dialog";
+import Select from "@/components/select/Select";
 
 export default function BusinessSourceDialog({ source, onClose, onCreated }: { source?: BusinessSource; onClose: () => void; onCreated: () => void }) {
   const [sourceType, setSourceType] = useState<CustomerType>(source?.source_type ?? "INDIVIDUAL");
@@ -54,12 +55,12 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
     <section ref={panelRef} tabIndex={-1} className="modal-panel modal-panel-narrow business-source-editor" role="dialog" aria-modal="true" aria-labelledby="source-dialog-title">
       <div className="modal-heading"><h2 id="source-dialog-title">{source ? "Edit business source" : "Create Source"}</h2><button className="icon-button" type="button" disabled={saving} onClick={onClose} aria-label="Close">×</button></div>
       <form className="form-stack" onSubmit={submit}>
-        <label className="form-field"><span>Source type <b>*</b></span><select value={sourceType} onChange={(event) => setSourceType(event.target.value as CustomerType)}>{CUSTOMER_TYPES.map((kind) => <option key={kind} value={kind}>{kind === "DYNAMIC" ? "Dynamic" : CUSTOMER_TYPE_LABELS[kind]}</option>)}</select></label>
+        <div className="form-field"><span id="source-type-label">Source type <b>*</b></span><Select aria-labelledby="source-type-label" value={sourceType} options={CUSTOMER_TYPES.map((kind) => ({ value: kind, label: kind === "DYNAMIC" ? "Dynamic" : CUSTOMER_TYPE_LABELS[kind] }))} onChange={setSourceType} /></div>
         <label className="form-field"><span>Name <b>*</b></span><input required maxLength={255} value={name} onChange={(event) => setName(event.target.value)} /></label>
         {sourceType !== "COMPANY" && <label className="form-field"><span>Phone Number <b>*</b></span><input type="tel" required inputMode="numeric" pattern="[0-9]{9,10}" maxLength={10} value={phone} onChange={(event) => setPhone(event.target.value.replace(/[^0-9]/g, "").slice(0, 10))} autoComplete="tel" title="Enter 9 or 10 digits." /></label>}
         {sourceType !== "INDIVIDUAL" && <label className="form-field"><span>PAN/VAT Number {sourceType === "COMPANY" && <b>*</b>}</span><input required={sourceType === "COMPANY"} maxLength={32} value={panVat} onChange={(event) => setPanVat(event.target.value)} /></label>}
         {sourceType === "DYNAMIC" && <>
-          <label className="form-field"><span>Interest Type <b>*</b></span><select required value={interestType} onChange={(event) => setInterestType(event.target.value as BusinessSourceInterestType | "")}><option value="">Select an interest type</option>{BUSINESS_SOURCE_INTEREST_TYPES.map((type) => <option key={type} value={type}>{type === "PERCENTAGE" ? "Percentage" : "Fixed Amount"}</option>)}</select></label>
+          <div className="form-field"><span id="source-interest-type-label">Interest Type <b>*</b></span><Select aria-labelledby="source-interest-type-label" value={interestType} options={[{ value: "", label: "Select an interest type" }, ...BUSINESS_SOURCE_INTEREST_TYPES.map((type) => ({ value: type, label: type === "PERCENTAGE" ? "Percentage" : "Fixed Amount" }))]} onChange={setInterestType} /></div>
           {interestType === "PERCENTAGE" && <label className="form-field"><span>Interest % <b>*</b></span><input required type="number" min="0" step="0.0001" value={interestPercentage} onChange={(event) => setInterestPercentage(event.target.value)} /></label>}
           {interestType === "FIXED_AMOUNT" && <label className="form-field"><span>Interest Amount <b>*</b></span><input required type="number" min="0" step="0.01" value={interestAmount} onChange={(event) => setInterestAmount(event.target.value)} /></label>}
           <label className="form-field"><span>Days <b>*</b></span><input required type="number" min="1" step="1" value={days} onChange={(event) => setDays(event.target.value)} /></label>

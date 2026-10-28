@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, FilePlus2, Plus, Save, Trash2 } from "lucide-react";
 
 import { useToast } from "@/components/toast/ToastProvider";
+import DatePicker from "@/components/date-picker/DatePicker";
+import Select from "@/components/select/Select";
 import { createBill, fetchBill, type Bill, type BillRateUnit, type NewBill, updateBill } from "@/lib/bill-data";
 import { type Customer, fetchCustomers, CUSTOMER_TYPE_LABELS } from "@/lib/business-data";
 import { userFacingError } from "@/lib/user-facing-error";
@@ -516,9 +518,7 @@ function NewBillFormContents() {
                 </div>
               </div>
               <div className="form-grid bill-info-grid">
-                <label className="form-field"><span>Transaction <b>*</b></span><select value={transactionType} disabled={editing && savedBill?.status !== "DRAFT"} onChange={(event) => setTransactionType(event.target.value as "SALE" | "PURCHASE")}>
-                  <option value="SALE">Customer buys from shop</option><option value="PURCHASE">Customer sells to shop</option>
-                </select></label>
+                <div className="form-field"><span id="bill-transaction-label">Transaction <b>*</b></span><Select aria-labelledby="bill-transaction-label" value={transactionType} disabled={editing && savedBill?.status !== "DRAFT"} options={[{ value: "SALE", label: "Customer buys from shop" }, { value: "PURCHASE", label: "Customer sells to shop" }]} onChange={setTransactionType} /></div>
                 <label className="form-field">
                   <span>Bill Number <b>*</b></span>
                   <input
@@ -534,45 +534,42 @@ function NewBillFormContents() {
                   />
                   {fieldErrors.bill_number && <span className="bill-field-error" id="bill-number-error">{fieldErrors.bill_number}</span>}
                 </label>
-                <label className="form-field">
-                  <span>Bill Date <b>*</b></span>
-                  <input
+                <div className="form-field">
+                  <span id="bill-date-label">Bill Date <b>*</b></span>
+                  <DatePicker
+                    aria-labelledby="bill-date-label"
                     required
-                    type="date"
                     disabled={editing && savedBill?.status !== "DRAFT"}
                     value={billDate}
                     aria-invalid={Boolean(fieldErrors.bill_date)}
                     aria-describedby={fieldErrors.bill_date ? "bill-date-error" : undefined}
-                    onChange={(event) => {
-                      setBillDate(event.target.value);
+                    onChange={(value) => {
+                      setBillDate(value);
                       clearFieldError("bill_date");
                     }}
                   />
                   {fieldErrors.bill_date && <span className="bill-field-error" id="bill-date-error">{fieldErrors.bill_date}</span>}
-                </label>
-                <label className="form-field">
-                  <span>Customer <b>*</b></span>
-                  <select
-                    required
+                </div>
+                <div className="form-field">
+                  <span id="bill-customer-label">Customer <b>*</b></span>
+                  <Select
+                    aria-labelledby="bill-customer-label"
                     value={customerId}
                     aria-invalid={Boolean(fieldErrors.customer)}
                     aria-describedby={customerError ? "customer-load-error" : fieldErrors.customer ? "customer-error" : undefined}
-                    onChange={(event) => {
-                      setCustomerId(event.target.value);
+                    options={[
+                      { value: "", label: customersLoading ? "Loading customers..." : "Select a customer" },
+                      ...customers.map((customer) => ({ value: String(customer.id), label: `${customer.name}${customer.phone ? ` · ${customer.phone}` : ""}` })),
+                    ]}
+                    onChange={(value) => {
+                      setCustomerId(value);
                       clearFieldError("customer");
                     }}
                     disabled={customersLoading || Boolean(customerError) || (editing && savedBill?.status !== "DRAFT")}
-                  >
-                    <option value="">{customersLoading ? "Loading customers..." : "Select a customer"}</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}{customer.phone ? ` · ${customer.phone}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  />
                   {customerError && <span className="bill-field-error" id="customer-load-error">{customerError}</span>}
                   {!customerError && fieldErrors.customer && <span className="bill-field-error" id="customer-error">{fieldErrors.customer}</span>}
-                </label>
+                </div>
                 <div className="form-field">
                   <span>Customer type</span>
                   <div className="bill-source-value" aria-live="polite">
@@ -641,18 +638,15 @@ function NewBillFormContents() {
                           />
                           {errors.quantity && <span className="bill-field-error">{errors.quantity}</span>}
                         </label>
-                        <label className="form-field">
-                          <span>Material <b>*</b></span>
-                          <select
-                            required
+                        <div className="form-field">
+                          <span id={`bill-material-${item.key}-label`}>Material <b>*</b></span>
+                          <Select
+                            aria-labelledby={`bill-material-${item.key}-label`}
                             value={item.material}
-                            onChange={(event) => updateMaterial(item.key, event.target.value)}
-                          >
-                            {MATERIALS.map((material) => (
-                              <option key={material.value} value={material.value}>{material.label}</option>
-                            ))}
-                          </select>
-                        </label>
+                            options={MATERIALS}
+                            onChange={(value) => updateMaterial(item.key, value)}
+                          />
+                        </div>
                         <label className="form-field">
                           <span className="bill-field-label">
                             Gross Weight {usesWeight(item) && <b>*</b>}<small>g</small>
@@ -689,25 +683,24 @@ function NewBillFormContents() {
                           <output className="bill-calculated-value">{netWeight.toFixed(3)} g</output>
                         </div>
                         {hasApplicablePurity(item.material) ? (
-                          <label className="form-field">
-                            <span className="bill-field-label">Purity <b>*</b><small>{item.material === "GOLD" ? "karat" : "fineness"}</small></span>
-                            <select
-                              required
+                          <div className="form-field">
+                            <span id={`bill-purity-${item.key}-label`} className="bill-field-label">Purity <b>*</b><small>{item.material === "GOLD" ? "karat" : "fineness"}</small></span>
+                            <Select
+                              aria-labelledby={`bill-purity-${item.key}-label`}
                               value={item.purity}
                               aria-invalid={Boolean(errors.purity)}
-                              onChange={(event) => {
-                                updateItem(item.key, "purity", event.target.value);
-                                if (event.target.value !== "CUSTOM") updateItem(item.key, "purity_custom", "");
+                              options={[
+                                { value: "", label: "Select purity" },
+                                ...(PURITY_OPTIONS[item.material as Material] ?? []),
+                                { value: "CUSTOM", label: "Other purity" },
+                              ]}
+                              onChange={(value) => {
+                                updateItem(item.key, "purity", value);
+                                if (value !== "CUSTOM") updateItem(item.key, "purity_custom", "");
                               }}
-                            >
-                              <option value="">Select purity</option>
-                              {(PURITY_OPTIONS[item.material as Material] ?? []).map((option) => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))}
-                              <option value="CUSTOM">Other purity</option>
-                            </select>
+                            />
                             {errors.purity && <span className="bill-field-error">{errors.purity}</span>}
-                          </label>
+                          </div>
                         ) : (
                           <div className="form-field">
                             <span>Purity</span>
@@ -750,17 +743,15 @@ function NewBillFormContents() {
                             </div>
                             {errors.rate && <span className="bill-field-error">{errors.rate}</span>}
                           </label>
-                          <label className="form-field">
-                            <span>Rate Unit</span>
-                            <select
+                          <div className="form-field">
+                            <span id={`bill-rate-unit-${item.key}-label`}>Rate Unit</span>
+                            <Select
+                              aria-labelledby={`bill-rate-unit-${item.key}-label`}
                               value={item.rate_unit}
-                              onChange={(event) => updateItem(item.key, "rate_unit", event.target.value)}
-                            >
-                              {RATE_UNITS.map((unit) => (
-                                <option key={unit.value} value={unit.value}>{unit.label}</option>
-                              ))}
-                            </select>
-                          </label>
+                              options={RATE_UNITS}
+                              onChange={(value) => updateItem(item.key, "rate_unit", value)}
+                            />
+                          </div>
                         </div>
                         <label className="form-field">
                           <span className="bill-field-label">Making Charge<small>manual Rs.</small></span>

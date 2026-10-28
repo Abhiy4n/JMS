@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import BusinessAppShell from "@/components/BusinessAppShell";
+import { Building2, Plus, Search, Users } from "lucide-react";
 import BusinessSourceDialog from "@/components/BusinessSourceDialog";
 import SourceCustomersDialog from "@/components/SourceCustomersDialog";
 import CustomerDialog from "@/components/CustomerDialog";
 import { fetchBusinessSources, fetchBusinessSourceSummary, deleteBusinessSource, BUSINESS_SOURCE_SORTS, BUSINESS_SOURCE_TYPE_LABELS, type BusinessSource, type BusinessSourceSort, type BusinessSourceSummary, type CustomerType } from "@/lib/business-data";
 import { userFacingError } from "@/lib/user-facing-error";
+import Select from "@/components/select/Select";
 
 export default function BusinessSourcesPage() {
   const [sources, setSources] = useState<BusinessSource[]>([]);
@@ -61,24 +62,20 @@ export default function BusinessSourcesPage() {
     finally { setDeletingId(null); }
   }
 
-  return <BusinessAppShell><div className="business-source-module">
+  return <div className="business-source-module integrated-module">
     <section className="page-heading"><div><p className="eyebrow">BUSINESS SOURCES</p><h1>Business Sources</h1><p className="page-description">Manage the sources through which customers are acquired or referred.</p></div></section>
     <div className="portfolio-kpis business-source-kpis" aria-label="Business source totals">
-      <section className="bill-detail-panel"><span>Total Business Sources</span><strong>{summary?.total_sources ?? (summaryError ? "—" : "Loading...")}</strong></section>
-      <section className="bill-detail-panel"><span>Total Customers Linked to Business Sources</span><strong>{summary?.total_linked_customers ?? (summaryError ? "—" : "Loading...")}</strong></section>
+      <section className="bill-detail-panel metric-card"><span className="metric-icon"><Building2 aria-hidden="true" /></span><div><span>Total business sources</span><strong>{summary?.total_sources ?? (summaryError ? "—" : "Loading...")}</strong><small>Active source records</small></div></section>
+      <section className="bill-detail-panel metric-card"><span className="metric-icon"><Users aria-hidden="true" /></span><div><span>Linked customers</span><strong>{summary?.total_linked_customers ?? (summaryError ? "—" : "Loading...")}</strong><small>Customers connected to a source</small></div></section>
     </div>
     {summaryError && <p className="notice notice-error" role="alert">{summaryError} <button type="button" className="button button-secondary button-small" onClick={refresh}>Retry</button></p>}
-    <div className="module-actions"><button className="button button-primary" onClick={() => setCreating(true)}>Create Source</button></div>
+    <div className="module-actions"><button className="button button-primary" onClick={() => setCreating(true)}><Plus aria-hidden="true" />Create source</button></div>
     <div className="table-toolbar business-source-toolbar">
       <div className="table-title-group"><span className="record-count">{loading ? "Loading..." : `${sources.length} sources`}</span></div>
       <div className="table-filters">
-        <label className="local-search"><span className="sr-only">Search business sources</span><input value={search} onChange={(event) => { setLoading(true); setSearch(event.target.value); }} placeholder="Search business sources..." /></label>
-        <label className="filter-select-wrap"><span className="sr-only">Filter by source type</span><select aria-label="Filter by source type" value={sourceType} onChange={(event) => { setLoading(true); setSourceType(event.target.value as CustomerType | ""); }}>
-          <option value="">All Types</option>{Object.entries(BUSINESS_SOURCE_TYPE_LABELS).map(([type, label]) => <option key={type} value={type}>{label}</option>)}
-        </select></label>
-        <label className="filter-select-wrap"><span className="sr-only">Sort business sources</span><select aria-label="Sort business sources" value={ordering} onChange={(event) => setOrdering(event.target.value as BusinessSourceSort)}>
-          {BUSINESS_SOURCE_SORTS.map((sort) => <option key={sort} value={sort}>{sort === "first_added" ? "First Added First" : sort === "recently_added" ? "Recently Added First" : sort === "name_asc" ? "Name A–Z" : "Name Z–A"}</option>)}
-        </select></label>
+        <label className="local-search"><Search className="search-glyph" aria-hidden="true" /><span className="sr-only">Search business sources</span><input value={search} onChange={(event) => { setLoading(true); setSearch(event.target.value); }} placeholder="Search business sources..." /></label>
+        <div className="filter-select-wrap"><Select aria-label="Filter by source type" value={sourceType} options={[{ value: "", label: "All Types" }, ...Object.entries(BUSINESS_SOURCE_TYPE_LABELS).map(([value, label]) => ({ value: value as CustomerType, label }))]} onChange={(value) => { setLoading(true); setSourceType(value); }} /></div>
+        <div className="filter-select-wrap"><Select aria-label="Sort business sources" value={ordering} options={BUSINESS_SOURCE_SORTS.map((value) => ({ value, label: value === "first_added" ? "First Added First" : value === "recently_added" ? "Recently Added First" : value === "name_asc" ? "Name A–Z" : "Name Z–A" }))} onChange={setOrdering} /></div>
         {hasFilters && <button type="button" className="button button-secondary button-small" onClick={clearFilters}>Clear Filters</button>}
       </div>
     </div>
@@ -96,5 +93,5 @@ export default function BusinessSourcesPage() {
     {editing && <BusinessSourceDialog key={editing.id} source={editing} onClose={() => setEditing(null)} onCreated={() => { setEditing(null); setActionError(""); setSuccess("Business source updated."); refresh(); }} />}
     {selected && <SourceCustomersDialog source={selected} onClose={() => setSelected(null)} onChanged={refresh} onAddCustomer={() => { setNewCustomerSource(selected.id); setSelected(null); }} />}
     {newCustomerSource !== undefined && <CustomerDialog initialSourceId={newCustomerSource} onClose={() => setNewCustomerSource(undefined)} onCreated={() => { setNewCustomerSource(undefined); setSuccess("Customer created and linked to the business source."); refresh(); }} />}
-  </div></BusinessAppShell>;
+  </div>;
 }
