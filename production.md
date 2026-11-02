@@ -6,7 +6,10 @@ This project has two services:
 - **Backend:** Django API at `http://localhost:8000`
 - **Database:** SQLite by default for local development; PostgreSQL when `DATABASE_URL` is configured
 
-## Run the Application
+## Run the Application on window example 
+cd D:\jms\JMS\backend
+.\.venv\Scripts\Activate.ps1
+python manage.py runserver 8000
 
 Open two terminal windows from the project root.
 
