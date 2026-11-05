@@ -177,7 +177,7 @@ export default function BusinessSourceDetailPage() {
 
   return (
     <>
-      <Link href="/dashboard" className="back-link"><span aria-hidden="true">←</span> Business Sources</Link>
+      <Link href="/business-sources" className="back-link"><span aria-hidden="true">←</span> Business Sources</Link>
       {!Number.isInteger(sourceId) || sourceId < 1 ? (
         <p className="notice notice-error" role="alert">This business source could not be found.</p>
       ) : error ? (

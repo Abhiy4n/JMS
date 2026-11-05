@@ -221,8 +221,13 @@ async function main() {
     await send("Emulation.setDeviceMetricsOverride", {width: 1440, height: 900, deviceScaleFactor: 1, mobile: false});
     assert.equal(await evaluate("document.querySelector('.business-source-module .eyebrow').textContent"), "BUSINESS SOURCES");
     assert.deepEqual(await evaluate("(()=>{const s=getComputedStyle(document.querySelector('.page-heading h1'));return {color:s.color,font:s.fontFamily,size:s.fontSize,weight:s.fontWeight}})()"), customerHeadingStyle);
-    assert.equal(await evaluate("[...document.querySelectorAll('.business-source-table .bill-row-actions button')].some(b=>b.textContent==='View')"), false);
-    assert.equal(await evaluate("[...document.querySelectorAll('.business-source-table .bill-row-actions button')].map(b=>b.textContent).join(',')"), "Edit,Delete");
+    assert.equal(await evaluate("document.querySelectorAll('.business-source-kpis .metric-card').length"), 3);
+    assert.equal(await evaluate("document.querySelector('.page-heading > .button')?.textContent.trim()"), "Add business source");
+    await evaluate("document.querySelector('.business-source-action-cell button').click()");
+    await waitFor("document.querySelector('[role=menu]')", "business source action menu");
+    assert.equal(await evaluate("[...document.querySelectorAll('[role=menuitem]')].map(b=>b.textContent).join(',')"), "Edit,Delete");
+    await key("Escape", "Escape");
+    await waitFor("!document.querySelector('[role=menu]')", "close business source action menu");
     await send("Emulation.setDeviceMetricsOverride", {width: 1440, height: 900, deviceScaleFactor: 1, mobile: false});
     writeFileSync(path.resolve(__dirname, "../../.runtime/business-source-directory.png"), Buffer.from((await send("Page.captureScreenshot", {format: "png"})).data, "base64"));
     await evaluate("document.querySelector('.business-source-name-button').focus()");
@@ -243,7 +248,7 @@ async function main() {
     await waitFor("document.querySelector('.business-source-details-window')", "source details from name click");
     await evaluate("document.querySelector('.business-source-details-window [aria-label=Close]').click()");
     await waitFor("!document.querySelector('.business-source-details-window')", "source details close button");
-    await clickText("Create Source"); await waitFor("document.querySelector('#source-dialog-title')");
+    await clickText("Add business source"); await waitFor("document.querySelector('#source-dialog-title')");
     await setInput('[role=dialog] input[maxlength="255"]', 'New Source');
     await setInput('[role=dialog] input[type="tel"]', '9811111111');
     await setInput('[role=dialog] textarea', 'Kathmandu');

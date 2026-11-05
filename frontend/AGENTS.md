@@ -30,3 +30,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - If a fix can be made smaller and clearer, choose the smaller path.
 - If you need to explain complexity, the code should still be approachable.
 - Always leave the codebase in a cleaner state than you found it.
+- Follow the shared UI feedback rules in `../PROJECT_RULES.md`.

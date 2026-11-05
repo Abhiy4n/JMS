@@ -50,7 +50,7 @@ const COLLAPSED_KEY = "jms-sidebar-collapsed";
 const PROFILE_PICTURE_MAX_BYTES = 5 * 1024 * 1024;
 
 const primaryNavigation = [
-  { label: "Business sources", href: "/dashboard", icon: Boxes },
+  { label: "Business sources", href: "/business-sources", icon: Boxes },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Bills & invoices", href: "/bills", icon: FileText },
 ];
@@ -81,7 +81,9 @@ function applySidebarCollapsed(collapsed: boolean) {
 }
 
 function isActivePath(pathname: string, href: string, label: string) {
-  if (label === "Business sources") return pathname === "/dashboard" || pathname.startsWith("/business-sources/");
+  if (label === "Business sources") {
+    return pathname === "/dashboard" || pathname === "/business-sources" || pathname.startsWith("/business-sources/");
+  }
   if (label === "Settings") return pathname.startsWith("/settings");
   return pathname === href || pathname.startsWith(`${href}/`);
 }

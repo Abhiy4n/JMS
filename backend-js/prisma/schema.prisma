@@ -1,0 +1,23 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Django remains the schema owner during the migration. This known system
+// table is enough to generate a client for readiness queries. Run `npm run
+// db:pull` against a disposable or reviewed PostgreSQL environment before
+// adding domain repositories; never run Prisma migrations during coexistence.
+model DjangoMigration {
+  id      Int      @id @default(autoincrement())
+  app     String   @db.VarChar(255)
+  name    String   @db.VarChar(255)
+  applied DateTime @db.Timestamptz(6)
+
+  @@map("django_migrations")
+}

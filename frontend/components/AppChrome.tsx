@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
+import AuthGate from "@/components/auth/AuthGate";
 
 const APP_PATHS = [
   "/dashboard",
@@ -17,6 +18,9 @@ const APP_PATHS = [
 
 export default function AppChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const isPublicPath = pathname === "/login" || pathname === "/signup";
   const usesAppShell = APP_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
-  return usesAppShell ? <BusinessAppShell>{children}</BusinessAppShell> : children;
+  const content = usesAppShell ? <BusinessAppShell>{children}</BusinessAppShell> : children;
+
+  return isPublicPath ? content : <AuthGate>{content}</AuthGate>;
 }

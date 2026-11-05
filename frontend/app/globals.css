@@ -1671,6 +1671,10 @@ textarea:focus-visible {
   animation: backdrop-in 140ms ease-out;
 }
 
+html[data-jms-theme="dark"] .modal-backdrop {
+  background: rgb(0 0 0 / 72%);
+}
+
 .modal-panel {
   width: min(100%, 650px);
   max-height: min(92vh, 800px);
@@ -2964,7 +2968,7 @@ textarea:focus-visible {
 .business-source-module .record-count { background: var(--gold-wash); color: #856118; }
 .business-source-table .business-source-name-cell { padding: 0; min-width: 200px; max-width: 320px; }
 .business-source-name-button { display: block; width: 100%; min-height: 56px; padding: 14px 15px; white-space: normal; overflow-wrap: anywhere; }
-.business-source-name-button:hover { color: #856118; background: #fffdf7; }
+.business-source-name-button:hover { color: var(--app-blue); background: #fffdf7; }
 .business-source-name-button:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: -3px; }
 .business-source-details-window { width: 75vw; max-width: none; height: 75vh; max-height: 90vh; }
 .business-source-details-window .modal-heading { padding-bottom: 16px; border-bottom: 1px solid #eadcb9; }

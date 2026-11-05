@@ -6,6 +6,7 @@ import { BUSINESS_SOURCE_TYPE_LABELS, fetchCustomers, linkCustomerToSource, type
 import { userFacingError } from "@/lib/user-facing-error";
 import { useDialog } from "@/lib/use-dialog";
 import Select from "@/components/select/Select";
+import { useToast } from "@/components/toast/ToastProvider";
 
 export default function SourceCustomersDialog({ source, onClose, onChanged, onAddCustomer }: {
   source: BusinessSource; onClose: () => void; onChanged: () => void; onAddCustomer: () => void;
@@ -17,8 +18,8 @@ export default function SourceCustomersDialog({ source, onClose, onChanged, onAd
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
-  const [success, setSuccess] = useState("");
   const panelRef = useRef<HTMLElement>(null);
+  const toast = useToast();
   useDialog(panelRef, onClose, saving);
   useEffect(() => {
     let current = true;
@@ -31,8 +32,8 @@ export default function SourceCustomersDialog({ source, onClose, onChanged, onAd
 
   async function linkCustomer() {
     if (!customerId || saving) return;
-    setSaving(true); setError(""); setSuccess("");
-    try { await linkCustomerToSource(Number(customerId), source.id); setCustomerId(""); setSuccess("Customer linked successfully."); setLoading(true); setReload((key) => key + 1); onChanged(); }
+    setSaving(true); setError("");
+    try { await linkCustomerToSource(Number(customerId), source.id); setCustomerId(""); toast.success("Customer linked successfully."); setLoading(true); setReload((key) => key + 1); onChanged(); }
     catch (failure) { setError(userFacingError(failure, "Could not link customer.")); }
     finally { setSaving(false); }
   }
@@ -55,7 +56,6 @@ export default function SourceCustomersDialog({ source, onClose, onChanged, onAd
         </>}
       </dl>
       {error && <p className="notice notice-error" role="alert">{error}</p>}
-      {success && <p className="notice notice-success" role="status">{success}</p>}
       {loading ? <p>Loading customers...</p> : error ? <button type="button" className="button button-secondary" onClick={() => { setLoading(true); setReload((key) => key + 1); }}>Retry loading customers</button> : <div className="source-customer-list">
         {customers.length === 0 ? <p>No customers linked yet.</p> : customers.map((customer) => <Link key={customer.id} href={`/customers?customer=${customer.id}`} className="source-customer-row"><strong>{customer.name}</strong><span>{customer.phone || "No phone"}</span><small>{customer.email || "No email"}</small></Link>)}
       </div>}

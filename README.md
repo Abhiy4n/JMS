@@ -1,5 +1,7 @@
 # JMS
 
+Agents: Before adding or changing a feature, read [PROJECT_RULES.md](PROJECT_RULES.md) for existing project requirements.
+
 See [PROGRESS.md](PROGRESS.md) for the timeline and current features, [CUSTOMERS.md](CUSTOMERS.md) for the Customer Folio/document workflow, and [BUSINESS_SOURCES.md](BUSINESS_SOURCES.md) for source management and customer linking.
 
 JMS is organized as a small monorepo with separate frontend and backend services:
@@ -8,6 +10,7 @@ JMS is organized as a small monorepo with separate frontend and backend services
 jms/
 ├── frontend/   # Next.js application
 ├── backend/    # Django API
+├── backend-js/ # Incremental TypeScript API replacement
 ├── production.md
 └── README.md
 ```
@@ -33,3 +36,13 @@ npm run dev
 ```
 
 The backend health endpoint is available at `http://localhost:8000/api/health/`.
+
+## TypeScript Backend Migration
+
+The new service under `backend-js/` is being built alongside Django according
+to [plan.md](plan.md). Django remains the active API and PostgreSQL schema owner
+until individual route groups pass parity testing and are explicitly switched.
+
+The TypeScript service currently provides the foundation and health/readiness
+routes. See [backend-js/README.md](backend-js/README.md) for setup and safety
+rules. It uses port `8001` by default and requires PostgreSQL.

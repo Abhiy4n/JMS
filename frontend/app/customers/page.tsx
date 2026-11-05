@@ -77,7 +77,7 @@ function CustomersDirectory() {
       {sources.length === 0 && !error && (
         <p className="notice notice-info">
           No source categories yet. You can add a customer here and create its new source category in the same form.
-          {" "}<Link href="/dashboard">Open Business Sources</Link>
+          {" "}<Link href="/business-sources">Open Business Sources</Link>
         </p>
       )}
 

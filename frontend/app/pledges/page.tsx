@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import BusinessAppShell from "@/components/BusinessAppShell";
 import DatePicker from "@/components/date-picker/DatePicker";
 import Select from "@/components/select/Select";
+import { useToast } from "@/components/toast/ToastProvider";
 import {
   PLEDGE_STATUSES,
   fetchPledges,
@@ -49,6 +50,7 @@ export default function PledgesPage() {
 
 function PledgeRecords() {
   const visitKey = useRouter().bfcacheId;
+  const toast = useToast();
   const searchParams = useSearchParams();
   const created = searchParams.get("created") === "1";
   const [result, setResult] = useState<{ key: string; pledges: Pledge[]; error: string } | null>(null);
@@ -65,6 +67,10 @@ function PledgeRecords() {
   const pledges = currentResult?.pledges ?? [];
   const loading = !dateRangeError && !currentResult;
   const error = currentResult?.error ?? "";
+
+  useEffect(() => {
+    if (created) toast.success("Pledge created successfully.");
+  }, [created, toast]);
 
   useEffect(() => {
     let current = true;
@@ -117,8 +123,6 @@ function PledgeRecords() {
           </Link>
         </div>
       </section>
-
-      {created && <p className="notice notice-success" role="status">Pledge created successfully.</p>}
 
       {error && (
         <div className="pledge-error-row">

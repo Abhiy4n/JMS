@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import BusinessAppShell from "@/components/BusinessAppShell";
 import DatePicker from "@/components/date-picker/DatePicker";
 import Select from "@/components/select/Select";
+import { useToast } from "@/components/toast/ToastProvider";
 import { ApiError } from "@/lib/auth/api";
 import { type Customer, fetchCustomers } from "@/lib/business-data";
 import { createPledge, updatePledge, getPledge, type Pledge, type NewPledgeItem } from "@/lib/pledge-data";
@@ -82,6 +83,7 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
   const editing = mode === "edit";
   const cancelHref = pledge ? `/pledges/${pledge.id}/form` : "/pledges";
   const router = useRouter();
+  const toast = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(true);
   const [customerError, setCustomerError] = useState("");
@@ -213,7 +215,9 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
     if (submitLock.current || submitting || customersLoading || customerError || closedPledge || (pledge && pledge.status !== "ACTIVE")) return;
     setFormError("");
     if (!validateForm()) {
-      setFormError("Review the highlighted fields and correct them before submitting.");
+      const message = "Review the highlighted fields and correct them before submitting.";
+      setFormError(message);
+      toast.warning(message);
       return;
     }
 
@@ -245,10 +249,12 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
           return [key ?? Number(index), itemError];
         })
       ));
-      setFormError(
+      const message = (
         errors.generalError
         || userFacingError(requestError, `Could not ${editing ? "save" : "create"} the Pledge. Review the fields and try again.`)
       );
+      setFormError(message);
+      toast.error(message);
       if (pledge) {
         // Another session may have closed the record while this draft was open.
         try {

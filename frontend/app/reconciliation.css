@@ -115,8 +115,63 @@
   margin-bottom: 22px;
 }
 
+.portfolio-kpis.business-source-kpis,
 .portfolio-kpis.credit-kpis {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.business-source-action-cell {
+  width: 72px;
+  text-align: center;
+}
+
+.business-source-editor {
+  position: relative;
+  width: min(100%, 720px);
+  padding: 30px 32px 28px;
+  border-radius: 6px;
+}
+
+.business-source-editor > .modal-heading {
+  position: relative;
+  justify-content: center;
+  min-height: 42px;
+  padding: 2px 48px 18px;
+}
+
+.business-source-editor > .modal-heading h2 {
+  text-align: center;
+}
+
+.business-source-editor > .modal-heading .icon-button {
+  position: absolute;
+  top: -20px;
+  right: -22px;
+  width: 36px;
+  height: 36px;
+  flex-basis: 36px;
+  border-color: var(--app-border);
+  border-radius: 5px;
+  color: var(--app-muted);
+  background: var(--app-surface);
+  font-size: 23px;
+  line-height: 1;
+}
+
+.business-source-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 17px 16px;
+  margin-top: 8px;
+}
+
+.business-source-full-field,
+.business-source-form > .modal-actions {
+  grid-column: 1 / -1;
+}
+
+.business-source-form > .modal-actions {
+  padding-top: 4px;
+  border-top: 1px solid var(--app-border-soft);
 }
 
 .integrated-module .table-toolbar {
@@ -179,6 +234,10 @@
 .business-source-details-window .source-customer-row:hover {
   color: var(--app-text-strong);
   background: var(--app-surface-muted);
+}
+
+.business-source-name-button:hover {
+  color: var(--app-blue);
 }
 
 .business-source-name-button:focus-visible,
@@ -322,6 +381,7 @@
 }
 
 @media (max-width: 1000px) {
+  .portfolio-kpis.business-source-kpis,
   .portfolio-kpis.credit-kpis,
   .api-card-grid {
     grid-template-columns: 1fr;
@@ -352,6 +412,27 @@
   .integrated-module .filter-select-wrap select {
     width: 100%;
     max-width: none;
+  }
+
+  .portfolio-kpis.business-source-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .business-source-editor {
+    padding: 24px 18px 20px;
+  }
+
+  .business-source-editor > .modal-heading .icon-button {
+    top: -15px;
+    right: -9px;
+  }
+
+  .business-source-form {
+    grid-template-columns: 1fr;
+  }
+
+  .business-source-form > * {
+    grid-column: 1;
   }
 
   .api-base-url {

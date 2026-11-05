@@ -1,0 +1,89 @@
+.trigger {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 7px;
+  color: var(--app-muted);
+  background: var(--app-surface);
+  cursor: pointer;
+  transition: border-color 130ms ease, background 130ms ease, color 130ms ease;
+}
+
+.trigger:hover:not(:disabled),
+.trigger[aria-expanded="true"] {
+  border-color: var(--app-focus);
+  color: var(--app-text-strong);
+  background: var(--app-surface-muted);
+}
+
+.trigger:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.trigger svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+}
+
+.menu {
+  position: fixed;
+  z-index: 100;
+  display: grid;
+  width: 176px;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  color: var(--app-text);
+  background: var(--app-surface);
+  box-shadow: var(--app-popover-shadow);
+  animation: action-menu-in 120ms ease-out;
+}
+
+.item {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.item:hover:not(:disabled),
+.item:focus-visible {
+  outline: 0;
+  background: var(--app-chip);
+}
+
+.item[data-tone="danger"] {
+  color: var(--app-red);
+}
+
+.item:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.item svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  stroke-width: 1.8;
+}
+
+@keyframes action-menu-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}

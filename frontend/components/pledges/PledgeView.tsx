@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
 import PledgePaperForm from "@/app/pledges/[id]/form/PledgePaperForm";
+import { useToast } from "@/components/toast/ToastProvider";
 import { closePledge, getPledge, type Pledge, type PledgeStatus } from "@/lib/pledge-data";
 import { userFacingError } from "@/lib/user-facing-error";
 
@@ -14,18 +15,6 @@ const STATUS_LABELS: Record<PledgeStatus, string> = {
   REDEEMED: "Redeemed",
   CANCELLED: "Cancelled",
 };
-
-function formatDate(value: string | null) {
-  if (!value) return "—";
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
 
 export default function PledgeView() {
   return (
@@ -37,6 +26,7 @@ export default function PledgeView() {
 
 function PledgeDetail() {
   const visitKey = useRouter().bfcacheId;
+  const toast = useToast();
   const { id } = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const [pledge, setPledge] = useState<Pledge | null>(null);
@@ -45,7 +35,7 @@ function PledgeDetail() {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [closingStatus, setClosingStatus] = useState<Exclude<PledgeStatus, "ACTIVE"> | null>(null);
-  const [actionNotice, setActionNotice] = useState<{ pledgeId: number; message: string; error: boolean } | null>(null);
+  const shownSaveToast = useRef("");
   const actionLock = useRef(false);
   const pledgeId = Number(id);
   const validId = Number.isSafeInteger(pledgeId) && pledgeId > 0;
@@ -84,6 +74,19 @@ function PledgeDetail() {
   const currentPledge = loadedKey === requestKey ? pledge : null;
   const isLoading = validId && !loadError && (loading || !currentPledge);
 
+  useEffect(() => {
+    if (!currentPledge) return;
+    const toastKey = created
+      ? `created:${currentPledge.id}`
+      : updated
+        ? `updated:${currentPledge.id}:${revision}`
+        : "";
+    if (!toastKey || shownSaveToast.current === toastKey) return;
+
+    shownSaveToast.current = toastKey;
+    toast.success(created ? "Pledge created successfully." : "Pledge changes saved successfully.");
+  }, [created, currentPledge, revision, toast, updated]);
+
   async function handleClose(status: Exclude<PledgeStatus, "ACTIVE">) {
     if (!currentPledge || currentPledge.status !== "ACTIVE" || actionLock.current) return;
     const action = status === "REDEEMED" ? "Redeem" : "Cancel";
@@ -94,17 +97,12 @@ function PledgeDetail() {
     const recordId = currentPledge.id;
     actionLock.current = true;
     setClosingStatus(status);
-    setActionNotice(null);
     try {
       const updatedPledge = await closePledge(recordId, status);
       setPledge((current) => current?.id === recordId ? updatedPledge : current);
-      setActionNotice({ pledgeId: recordId, message: `Pledge ${STATUS_LABELS[updatedPledge.status].toLowerCase()} successfully.`, error: false });
+      toast.success(`Pledge ${STATUS_LABELS[updatedPledge.status].toLowerCase()} successfully.`);
     } catch (requestError) {
-      setActionNotice({
-        pledgeId: recordId,
-        message: userFacingError(requestError, `Could not ${action.toLowerCase()} this Pledge. Please try again.`),
-        error: true,
-      });
+      toast.error(userFacingError(requestError, `Could not ${action.toLowerCase()} this Pledge. Please try again.`));
       // Another session may have closed the record, or the response may have been lost.
       try {
         const latestPledge = await getPledge(recordId);
@@ -154,13 +152,6 @@ function PledgeDetail() {
         </div>
       </section>
 
-      {created && currentPledge && <p className="notice notice-success" role="status">Pledge created successfully.</p>}
-      {updated && currentPledge && <p className="notice notice-success" role="status">Pledge changes saved successfully.</p>}
-      {currentPledge && actionNotice?.pledgeId === currentPledge.id && (
-        <p className={`notice ${actionNotice.error ? "notice-error" : "notice-success"}`} role={actionNotice.error ? "alert" : "status"}>
-          {actionNotice.message}
-        </p>
-      )}
       {currentPledge && currentPledge.status !== "ACTIVE" && (
         <p className="notice pledge-readonly-notice" role="status">
           This Pledge is {STATUS_LABELS[currentPledge.status].toLowerCase()} and can no longer be edited.
@@ -181,17 +172,6 @@ function PledgeDetail() {
             Dates use Gregorian (AD) YYYY-MM-DD; weights are grams. Scroll the paper sideways on small screens.
           </p>
           <PledgePaperForm pledge={currentPledge} />
-          <section className="pledge-detail-card" aria-labelledby="pledge-record-info-heading">
-            <div className="pledge-section-heading">
-              <div><p className="eyebrow">HISTORY</p><h2 id="pledge-record-info-heading">Record Information</h2></div>
-            </div>
-            <dl className="pledge-view-grid pledge-record-grid">
-              <div><dt>Created</dt><dd>{formatDateTime(currentPledge.created_at)}</dd></div>
-              <div><dt>Last Updated</dt><dd>{formatDateTime(currentPledge.updated_at)}</dd></div>
-              {currentPledge.status === "REDEEMED" && <div><dt>Redeemed Date</dt><dd>{formatDate(currentPledge.redeemed_date)}</dd></div>}
-              {currentPledge.status === "CANCELLED" && <div><dt>Cancelled Date</dt><dd>{formatDate(currentPledge.cancelled_date)}</dd></div>}
-            </dl>
-          </section>
         </div>
       ) : null}
     </BusinessAppShell>

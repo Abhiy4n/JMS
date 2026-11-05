@@ -3,6 +3,9 @@
 # dependencies
 /backend/test
 /frontend/node_modules
+/backend-js/node_modules
+/backend-js/dist
+/backend-js/src/generated
 /frontend/.next
 /frontend/out
 /backend/.venv

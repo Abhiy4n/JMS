@@ -52,11 +52,11 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
   }
 
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
-    <section ref={panelRef} tabIndex={-1} className="modal-panel modal-panel-narrow business-source-editor" role="dialog" aria-modal="true" aria-labelledby="source-dialog-title">
+    <section ref={panelRef} tabIndex={-1} className="modal-panel business-source-editor" role="dialog" aria-modal="true" aria-labelledby="source-dialog-title">
       <div className="modal-heading"><h2 id="source-dialog-title">{source ? "Edit business source" : "Create Source"}</h2><button className="icon-button" type="button" disabled={saving} onClick={onClose} aria-label="Close">×</button></div>
-      <form className="form-stack" onSubmit={submit}>
+      <form className="form-stack business-source-form" onSubmit={submit}>
+        <label className="form-field business-source-full-field"><span>Name <b>*</b></span><input required maxLength={255} placeholder="Business source name" value={name} onChange={(event) => setName(event.target.value)} /></label>
         <div className="form-field"><span id="source-type-label">Source type <b>*</b></span><Select aria-labelledby="source-type-label" value={sourceType} options={CUSTOMER_TYPES.map((kind) => ({ value: kind, label: kind === "DYNAMIC" ? "Dynamic" : CUSTOMER_TYPE_LABELS[kind] }))} onChange={setSourceType} /></div>
-        <label className="form-field"><span>Name <b>*</b></span><input required maxLength={255} value={name} onChange={(event) => setName(event.target.value)} /></label>
         {sourceType !== "COMPANY" && <label className="form-field"><span>Phone Number <b>*</b></span><input type="tel" required inputMode="numeric" pattern="[0-9]{9,10}" maxLength={10} value={phone} onChange={(event) => setPhone(event.target.value.replace(/[^0-9]/g, "").slice(0, 10))} autoComplete="tel" title="Enter 9 or 10 digits." /></label>}
         {sourceType !== "INDIVIDUAL" && <label className="form-field"><span>PAN/VAT Number {sourceType === "COMPANY" && <b>*</b>}</span><input required={sourceType === "COMPANY"} maxLength={32} value={panVat} onChange={(event) => setPanVat(event.target.value)} /></label>}
         {sourceType === "DYNAMIC" && <>
@@ -65,12 +65,12 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
           {interestType === "FIXED_AMOUNT" && <label className="form-field"><span>Interest Amount <b>*</b></span><input required type="number" min="0" step="0.01" value={interestAmount} onChange={(event) => setInterestAmount(event.target.value)} /></label>}
           <label className="form-field"><span>Days <b>*</b></span><input required type="number" min="1" step="1" value={days} onChange={(event) => setDays(event.target.value)} /></label>
         </>}
-        <label className="form-field"><span>Email (optional)</span><input type="email" value={email} onChange={(event) => {
+        <label className="form-field business-source-full-field"><span>Email (optional)</span><input type="email" placeholder="name@example.com" value={email} onChange={(event) => {
           setEmail(event.target.value);
           event.currentTarget.setCustomValidity(isValidContactEmail(event.target.value) ? "" : "Use a valid email address with a recognized domain such as .com or .np.");
         }} autoComplete="email" /></label>
-        <label className="form-field"><span>Address <b>*</b></span><textarea required value={address} onChange={(event) => setAddress(event.target.value)} rows={2} /></label>
-        {error && <p className="notice notice-error" role="alert">{error}</p>}
+        <label className="form-field business-source-full-field"><span>Address <b>*</b></span><textarea required placeholder="Enter address" value={address} onChange={(event) => setAddress(event.target.value)} rows={2} /></label>
+        {error && <p className="notice notice-error business-source-full-field" role="alert">{error}</p>}
         <div className="modal-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" type="submit" disabled={saving}>{saving ? "Saving..." : source ? "Save changes" : "Create Source"}</button></div>
       </form>
     </section>
