@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.test import override_settings
@@ -36,8 +37,10 @@ class AuthSessionTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
 
     def test_login_creates_session_and_login_event_with_metadata(self):
-        response = self.login()
+        response = self.login(HTTP_X_REQUEST_ID="login-test-request")
         self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response["X-Request-ID"], "login-test-request")
+        self.assertRegex(response["Server-Timing"], r"^app;dur=\d+\.\d{2}$")
         session = UserSession.objects.get(user=self.user)
         event = LoginEvent.objects.get(user=self.user)
         self.assertEqual((session.browser, session.operating_system), ("Chrome", "Windows"))
@@ -61,8 +64,29 @@ class AuthSessionTests(APITestCase):
         new_user = User.objects.get(email="new@example.com")
         self.assertEqual(new_user.auth_sessions.count(), 1)
         self.assertEqual(new_user.login_events.count(), 1)
+        self.assertEqual(response.data["user"]["company_name"], "Admin")
         self.authorize(response.data["access"])
         self.assertEqual(self.client.get(reverse("auth-me")).status_code, 200)
+
+    def test_company_name_can_be_changed_and_cannot_be_blank(self):
+        login = self.login()
+        self.authorize(login.data["access"])
+        response = self.client.patch(
+            reverse("auth-company-name"),
+            {"company_name": "  Ganesh Gold House  "},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["company_name"], "Ganesh Gold House")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.company_name, "Ganesh Gold House")
+
+        invalid = self.client.patch(
+            reverse("auth-company-name"), {"company_name": "   "}, format="json"
+        )
+        self.assertEqual(invalid.status_code, 400, invalid.data)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.company_name, "Ganesh Gold House")
 
     def test_activity_marks_current_session_and_keeps_history(self):
         first = self.login()
@@ -174,6 +198,41 @@ class AuthSessionTests(APITestCase):
         self.login(address="192.0.2.20", HTTP_X_FORWARDED_FOR="198.51.100.9")
         newest = UserSession.objects.order_by("-created_at").first()
         self.assertEqual(str(newest.ip_address), "192.0.2.20")
+
+    @override_settings(AUTH_TRUSTED_PROXY_IPS=["10.0.0.0/8"])
+    def test_location_headers_are_used_only_for_a_trusted_proxy(self):
+        trusted = self.login(
+            address="10.0.0.5",
+            HTTP_X_FORWARDED_FOR="8.8.8.8",
+            HTTP_CF_IPCITY="Kathmandu",
+            HTTP_CF_REGION="Bagmati",
+            HTTP_CF_IPCOUNTRY="NP",
+        )
+        self.assertEqual(trusted.status_code, 200)
+        self.assertEqual(
+            UserSession.objects.order_by("-created_at").first().location,
+            "Kathmandu, Bagmati, NP",
+        )
+
+        self.login(
+            address="192.0.2.20",
+            HTTP_CF_IPCITY="Spoofed city",
+            HTTP_CF_IPCOUNTRY="NP",
+        )
+        self.assertEqual(UserSession.objects.order_by("-created_at").first().location, "")
+
+    @override_settings(
+        AUTH_TRUSTED_PROXY_IPS=[], AUTH_GEOIP2_DATABASE="/tmp/GeoLite2-City.mmdb"
+    )
+    @patch("accounts.request_metadata.Path.is_file", return_value=True)
+    @patch("accounts.request_metadata._geoip_reader")
+    def test_geoip_database_location_is_saved(self, reader, _is_file):
+        result = reader.return_value.city.return_value
+        result.city.name = "Kathmandu"
+        result.country.name = "Nepal"
+        response = self.login(address="8.8.8.8")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(UserSession.objects.get().location, "Kathmandu, Nepal")
 
     @override_settings(AUTH_SESSION_RETENTION_DAYS=30, AUTH_LOGIN_EVENT_RETENTION_DAYS=60)
     def test_cleanup_removes_old_inactive_records_and_events(self):

@@ -2,6 +2,7 @@ import ipaddress
 import re
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import unquote
 
 from django.conf import settings
 from django.utils.crypto import salted_hmac
@@ -19,6 +20,14 @@ def _networks(setting_name):
 
 def _is_in_networks(address, networks):
     return any(address in network for network in networks)
+
+
+def _trusted_proxy(request):
+    try:
+        remote = ipaddress.ip_address(request.META.get("REMOTE_ADDR", ""))
+    except ValueError:
+        return False
+    return _is_in_networks(remote, _networks("AUTH_TRUSTED_PROXY_IPS"))
 
 
 def get_client_ip(request):
@@ -136,10 +145,46 @@ def get_ip_location(ip_value):
     return ", ".join(part for part in parts if part)[:255]
 
 
+def _clean_location_part(value):
+    part = unquote(value or "").strip()
+    if not part or part.upper() in {"XX", "T1", "UNKNOWN"}:
+        return ""
+    # Location headers are display-only, but strip control characters so a
+    # proxy cannot inject misleading line breaks into activity responses.
+    return re.sub(r"[\x00-\x1f\x7f]", "", part)[:100]
+
+
+def get_proxy_location(request):
+    """Use geolocation headers only when they came through a trusted proxy."""
+
+    if not _trusted_proxy(request):
+        return ""
+
+    header_sets = (
+        ("HTTP_CF_IPCITY", "HTTP_CF_REGION", "HTTP_CF_IPCOUNTRY"),
+        (
+            "HTTP_X_VERCEL_IP_CITY",
+            "HTTP_X_VERCEL_IP_COUNTRY_REGION",
+            "HTTP_X_VERCEL_IP_COUNTRY",
+        ),
+    )
+    for header_names in header_sets:
+        parts = []
+        for header_name in header_names:
+            part = _clean_location_part(request.META.get(header_name, ""))
+            if part and part not in parts:
+                parts.append(part)
+        if parts:
+            return ", ".join(parts)[:255]
+    return ""
+
+
 def get_request_metadata(request):
     metadata = parse_user_agent(request.META.get("HTTP_USER_AGENT", ""))
     metadata["ip_address"] = get_client_ip(request)
-    metadata["location"] = get_ip_location(metadata["ip_address"])
+    metadata["location"] = get_proxy_location(request) or get_ip_location(
+        metadata["ip_address"]
+    )
     fingerprint = "|".join(
         (metadata["browser"], metadata["operating_system"], metadata["device_type"])
     ).lower()

@@ -19,6 +19,7 @@ from .session_auth import SessionTokenRefreshSerializer, tokens_for_user
 from .serializers import (
     PROFILE_PICTURE_EXTENSIONS,
     BusinessSourceSerializer,
+    CompanyNameSerializer,
     CustomerSerializer,
     LoginEventSerializer,
     LoginSerializer,
@@ -113,6 +114,18 @@ class ProfilePictureView(APIView):
             default_storage.delete(previous_name)
 
         return Response(UserSerializer(user).data)
+
+
+class CompanyNameView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        serializer = CompanyNameSerializer(
+            request.user, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(UserSerializer(request.user).data)
 
 
 class AuthTokenRefreshView(TokenRefreshView):

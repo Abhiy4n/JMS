@@ -32,9 +32,12 @@ use `AUTH_SESSION_RETENTION_DAYS` (90) and `AUTH_LOGIN_EVENT_RETENTION_DAYS` (18
 and API event responses use `AUTH_LOGIN_EVENT_LIMIT` (100).
 
 Forwarded client IPs are ignored unless the direct peer is included in
-`AUTH_TRUSTED_PROXY_IPS`. Location lookup is optional: install `geoip2` and point
-`AUTH_GEOIP2_DATABASE` to a local MaxMind GeoLite2 City `.mmdb` file. Private
-addresses and unavailable lookups show no location.
+`AUTH_TRUSTED_PROXY_IPS`. Trusted Cloudflare or Vercel city/region/country
+headers are used when present. Otherwise, location is resolved with the installed
+`geoip2` package and a MaxMind GeoLite2 City `.mmdb` file. Put the database at
+`backend/data/GeoLite2-City.mmdb`, install it in a standard system GeoIP folder,
+or set `AUTH_GEOIP2_DATABASE` explicitly. Private addresses and unavailable
+lookups show no location because they cannot be mapped accurately.
 
 Schedule retention cleanup (daily is sufficient):
 

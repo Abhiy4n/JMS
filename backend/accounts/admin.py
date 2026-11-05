@@ -13,7 +13,7 @@ class UserAdmin(DjangoUserAdmin):
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Profile", {"fields": ("name", "role")}),
+        ("Profile", {"fields": ("name", "company_name", "role")}),
         (
             "Permissions",
             {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")},
@@ -55,7 +55,7 @@ class LoginEventAdmin(admin.ModelAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email", "name", "role", "password1", "password2", "is_staff", "is_active"),
+                "fields": ("email", "name", "company_name", "role", "password1", "password2", "is_staff", "is_active"),
             },
         ),
     )

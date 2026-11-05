@@ -3,6 +3,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
+from corsheaders.defaults import default_headers
 from dotenv import load_dotenv
 
 
@@ -32,6 +33,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
+    "config.request_timing.RequestTimingMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -102,6 +104,8 @@ CORS_ALLOWED_ORIGINS = [
     ).split(",")
     if origin
 ]
+CORS_ALLOW_HEADERS = (*default_headers, "x-request-id")
+CORS_EXPOSE_HEADERS = ("x-request-id", "server-timing")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -136,4 +140,12 @@ AUTH_TRUSTED_PROXY_IPS = [
     for value in os.getenv("AUTH_TRUSTED_PROXY_IPS", "").split(",")
     if value.strip()
 ]
-AUTH_GEOIP2_DATABASE = os.getenv("AUTH_GEOIP2_DATABASE", "")
+_geoip_database_candidates = (
+    BASE_DIR / "data" / "GeoLite2-City.mmdb",
+    Path("/usr/share/GeoIP/GeoLite2-City.mmdb"),
+    Path("/usr/local/share/GeoIP/GeoLite2-City.mmdb"),
+)
+AUTH_GEOIP2_DATABASE = os.getenv("AUTH_GEOIP2_DATABASE", "") or next(
+    (str(path) for path in _geoip_database_candidates if path.is_file()),
+    "",
+)

@@ -41,6 +41,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=255)
+    company_name = models.CharField(max_length=255, default="Admin")
     profile_picture = models.URLField(blank=True)
     role = models.CharField(
         max_length=32,

@@ -56,8 +56,21 @@ def validate_customer_email(value):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "name", "email", "profile_picture", "role")
+        fields = ("id", "name", "email", "company_name", "profile_picture", "role")
         read_only_fields = fields
+
+
+class CompanyNameSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(max_length=255, trim_whitespace=True)
+
+    class Meta:
+        model = User
+        fields = ("company_name",)
+
+    def validate_company_name(self, value):
+        if not value:
+            raise serializers.ValidationError("Company name is required.")
+        return value
 
 
 PROFILE_PICTURE_MAX_BYTES = 5 * 1024 * 1024
