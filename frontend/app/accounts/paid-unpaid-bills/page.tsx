@@ -1,5 +1,5 @@
-import StatusBillsPage from "./StatusBillsPage";
+import { permanentRedirect } from "next/navigation";
 
 export default function PaidBillsPage() {
-  return <StatusBillsPage />;
+  permanentRedirect("/accounts/bills");
 }

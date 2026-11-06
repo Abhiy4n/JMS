@@ -128,6 +128,7 @@ function PledgeDetail() {
               <span className={`status-badge status-${currentPledge.status.toLowerCase()}`}>
                 {STATUS_LABELS[currentPledge.status]}
               </span>
+              <span className="status-badge">{currentPledge.financial_status.replaceAll("_", " ")}</span>
               {currentPledge.is_overdue && <span className="pledge-overdue-badge">Overdue</span>}
             </div>
           )}
@@ -141,10 +142,10 @@ function PledgeDetail() {
               ) : (
                 <Link className="button button-primary" href={`/pledges/${currentPledge.id}/edit`}>Edit Pledge</Link>
               )}
-              <button className="button button-secondary" type="button" disabled={Boolean(closingStatus)} onClick={() => handleClose("REDEEMED")}>
+              <button className="button button-secondary" type="button" disabled={Boolean(closingStatus) || currentPledge.financial_status !== "PAID"} title={currentPledge.financial_status === "PAID" ? "Release collateral" : "Settle principal and interest before redemption"} onClick={() => handleClose("REDEEMED")}>
                 {closingStatus === "REDEEMED" ? "Redeeming..." : "Redeem Pledge"}
               </button>
-              <button className="button button-danger-outline" type="button" disabled={Boolean(closingStatus)} onClick={() => handleClose("CANCELLED")}>
+              <button className="button button-danger-outline" type="button" disabled={Boolean(closingStatus) || Boolean(currentPledge.credit_id)} title={currentPledge.credit_id ? "Accounting reversal is not available for linked Pledges" : undefined} onClick={() => handleClose("CANCELLED")}>
                 {closingStatus === "CANCELLED" ? "Cancelling..." : "Cancel Pledge"}
               </button>
             </>
@@ -156,6 +157,16 @@ function PledgeDetail() {
         <p className="notice pledge-readonly-notice" role="status">
           This Pledge is {STATUS_LABELS[currentPledge.status].toLowerCase()} and can no longer be edited.
         </p>
+      )}
+
+      {currentPledge?.credit_calculation && (
+        <section className="credit-summary-grid" aria-label="Pledge Credit balance">
+          <div><span>Total days</span><strong>{currentPledge.elapsed_days}</strong><small>Since Pledge date</small></div>
+          <div><span>Principal due</span><strong>NPR {currentPledge.credit_calculation.principal_due}</strong></div>
+          <div><span>Interest due</span><strong>NPR {currentPledge.credit_calculation.interest_due}</strong></div>
+          <div><span>Total due</span><strong>NPR {currentPledge.credit_calculation.total_due}</strong></div>
+          <Link className="button button-secondary" href="/accounts/bills">Open in Accounts → Bills</Link>
+        </section>
       )}
 
       {isLoading ? (

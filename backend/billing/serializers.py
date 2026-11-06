@@ -323,7 +323,7 @@ class BillSerializer(serializers.ModelSerializer):
         # Creation-time payment is not borrowed principal; only unpaid value
         # starts accruing the selected customer's interest schedule.
         bill.credit_customer_type = bill.customer.effective_customer_type
-        bill.credit_interest_amount, bill.credit_basis = bill.customer.credit_terms()
+        _, bill.credit_interest_amount, bill.credit_basis, _ = bill.customer.credit_terms()
         bill.initial_credit = bill.amount_due if bill.transaction_type == Bill.TransactionType.SALE else Decimal("0.00")
         bill.save(update_fields=("credit_customer_type", "credit_interest_amount", "credit_basis", "initial_credit"))
         return bill
@@ -349,7 +349,7 @@ class BillSerializer(serializers.ModelSerializer):
         if was_draft:
             instance.initial_credit = instance.amount_due if instance.transaction_type == Bill.TransactionType.SALE else Decimal("0.00")
             instance.credit_customer_type = instance.customer.effective_customer_type
-            instance.credit_interest_amount, instance.credit_basis = instance.customer.credit_terms()
+            _, instance.credit_interest_amount, instance.credit_basis, _ = instance.customer.credit_terms()
             instance.save(update_fields=("initial_credit", "credit_customer_type", "credit_interest_amount", "credit_basis"))
             instance.credit_adjustments.all().delete()
         elif instance.transaction_type == Bill.TransactionType.SALE and instance.amount_due != previous_due:

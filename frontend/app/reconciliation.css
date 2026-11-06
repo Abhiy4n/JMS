@@ -439,4 +439,10 @@
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .api-base-url code {
+    width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
 }

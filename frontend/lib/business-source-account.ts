@@ -38,6 +38,23 @@ export type BusinessSourceAccount = {
   source: { id: number; name: string };
   summary: AccountSummary;
   filtered_summary: AccountSummary;
+  pledge_credit_summary: {
+    total_credits: number;
+    principal_due: string;
+    interest_due: string;
+    total_due: string;
+  };
+  pledge_credits: Array<{
+    id: number;
+    pledge_id: number;
+    pledge_number: string;
+    customer_name: string;
+    credit_date: string;
+    principal_due: string;
+    interest_due: string;
+    total_due: string;
+  }>;
+  pledge_credit_statement: AccountStatementEntry[];
   filters: {
     search: string;
     status: AccountHistoryStatus;

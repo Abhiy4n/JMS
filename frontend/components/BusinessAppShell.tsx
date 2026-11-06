@@ -10,8 +10,6 @@ import {
   Camera,
   ChevronDown,
   CircleHelp,
-  CircleDollarSign,
-  CreditCard,
   FileText,
   Gem,
   ImageUp,
@@ -26,20 +24,21 @@ import {
   Sparkles,
   Sun,
   Trash2,
-  Users,
   WalletCards,
   X,
   type LucideIcon,
 } from "lucide-react";
 
 import { useToast } from "@/components/toast/ToastProvider";
+import { useAuth } from "@/components/auth/AuthProvider";
 import {
   logoutCurrentSession,
   removeProfilePicture,
+  updateCompanyName,
   uploadProfilePicture,
   type AuthUser,
 } from "@/lib/auth/api";
-import { clearSession, getAccessToken, getStoredUser, updateStoredUser } from "@/lib/auth/storage";
+import { getAccessToken, getStoredUser, updateStoredUser } from "@/lib/auth/storage";
 import { userFacingError } from "@/lib/user-facing-error";
 import styles from "./BusinessAppShell.module.css";
 
@@ -51,8 +50,6 @@ const PROFILE_PICTURE_MAX_BYTES = 5 * 1024 * 1024;
 
 const primaryNavigation = [
   { label: "Business sources", href: "/business-sources", icon: Boxes },
-  { label: "Customers", href: "/customers", icon: Users },
-  { label: "Bills & invoices", href: "/bills", icon: FileText },
 ];
 
 const workspaceNavigation = [
@@ -89,7 +86,6 @@ function isActivePath(pathname: string, href: string, label: string) {
 }
 
 function getPageLabel(pathname: string) {
-  if (pathname === "/accounts/paid-unpaid-bills") return "Accounts · Paid / unpaid bills";
   if (pathname.startsWith("/accounts")) return "Accounts · Bills";
   if (pathname.startsWith("/customers")) return "Customers";
   if (pathname.startsWith("/bills")) return "Bills & invoices";
@@ -107,18 +103,23 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
   const profileRef = useRef<HTMLDivElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const { clearAuthentication } = useAuth();
   const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(() => pathname.startsWith("/accounts"));
   const [profileOpen, setProfileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [companyNameBusy, setCompanyNameBusy] = useState(false);
+  const [companyNameDraft, setCompanyNameDraft] = useState("Admin");
   const [theme, setTheme] = useState<Theme>("light");
   const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      setUser(getStoredUser());
+      const storedUser = getStoredUser();
+      setUser(storedUser);
+      setCompanyNameDraft(storedUser?.company_name || "Admin");
       const savedTheme = window.localStorage.getItem(THEME_KEY);
       const initialTheme = isTheme(savedTheme) ? savedTheme : "light";
       applyTheme(initialTheme, false);
@@ -129,7 +130,11 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
   }, []);
 
   useEffect(() => {
-    function syncUser() { setUser(getStoredUser()); }
+    function syncUser() {
+      const storedUser = getStoredUser();
+      setUser(storedUser);
+      setCompanyNameDraft(storedUser?.company_name || "Admin");
+    }
     window.addEventListener("storage", syncUser);
     window.addEventListener("jms-session-updated", syncUser);
     return () => {
@@ -187,11 +192,10 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
         // Always clear local credentials, even if the server cannot be reached.
       }
     }
-    clearSession();
+    clearAuthentication();
     delete document.documentElement.dataset.jmsTheme;
     toast.info("You have been signed out.", { icon: LogOut });
     router.replace("/login");
-    router.refresh();
   }
 
   async function savePhoto(
@@ -229,7 +233,31 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
     void savePhoto(removeProfilePicture, "Profile picture removed.", Trash2);
   }
 
+  async function handleCompanyNameSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const companyName = companyNameDraft.trim();
+    if (!companyName) {
+      toast.warning("Company name is required.");
+      return;
+    }
+    const accessToken = getAccessToken();
+    if (!accessToken || companyNameBusy) return;
+    setCompanyNameBusy(true);
+    try {
+      const updated = await updateCompanyName(companyName, accessToken);
+      updateStoredUser(updated);
+      setUser(updated);
+      setCompanyNameDraft(updated.company_name);
+      toast.success("Company name updated.");
+    } catch (error) {
+      toast.error(userFacingError(error, "Could not update the company name."));
+    } finally {
+      setCompanyNameBusy(false);
+    }
+  }
+
   const displayName = user?.name || "Your account";
+  const companyName = user?.company_name?.trim() || "Admin";
   const pledgeReportActive = pathname === "/pledges/report";
   const pledgeRecordsActive = !pledgeReportActive && (pathname === "/pledges" || pathname.startsWith("/pledges/"));
   const initials = displayName
@@ -248,11 +276,11 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
     <div className={styles.frame}>
       <aside className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ""}`}>
         <div className={styles.brandRow}>
-          <Link className={styles.brand} href="/dashboard" onClick={() => setMenuOpen(false)} title={navTitle("Shree Ganesh Jewellers")}>
+          <Link className={styles.brand} href="/dashboard" onClick={() => setMenuOpen(false)} title={navTitle(companyName)}>
             <span className={styles.brandMark} aria-hidden="true"><Gem /></span>
             <span className={styles.brandCopy}>
-              <strong>Shree Ganesh</strong>
-              <small>Jewellers</small>
+              <strong title={companyName}>{companyName}</strong>
+              <small>JMS</small>
             </span>
           </Link>
           <button
@@ -279,6 +307,16 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
                 </Link>
               );
             })}
+            <Link
+              className={`${styles.navItem} ${pledgeRecordsActive ? styles.navItemActive : ""}`}
+              href="/pledges"
+              aria-current={pledgeRecordsActive ? "page" : undefined}
+              title={navTitle("Pledge Records")}
+              onClick={() => setMenuOpen(false)}
+            >
+              <Gem aria-hidden="true" />
+              <span>Pledge Records</span>
+            </Link>
             <div className={styles.navItemGroup}>
               <button
                 className={`${styles.navItem} ${pathname.startsWith("/accounts") ? styles.navItemActive : ""}`}
@@ -302,40 +340,12 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
                 >
                   <FileText aria-hidden="true" /><span>Bills</span>
                 </Link>
-                <Link
-                  className={`${styles.navItem} ${styles.navSubItem} ${pathname === "/accounts/paid-unpaid-bills" ? styles.navItemActive : ""}`}
-                  href="/accounts/paid-unpaid-bills"
-                  aria-current={pathname === "/accounts/paid-unpaid-bills" ? "page" : undefined}
-                  title={navTitle("Paid / unpaid bills")}
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <CircleDollarSign aria-hidden="true" /><span>Paid / unpaid bills</span>
-                </Link>
-                <Link
-                  className={`${styles.navItem} ${styles.navSubItem} ${pathname === "/accounts/credit" ? styles.navItemActive : ""}`}
-                  href="/accounts/credit"
-                  aria-current={pathname === "/accounts/credit" ? "page" : undefined}
-                  title={navTitle("Customer credit")}
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <CreditCard aria-hidden="true" /><span>Customer credit</span>
-                </Link>
               </div>
             </div>
           </div>
 
           <div className={styles.navGroup}>
-            <p className={styles.groupLabel}>PLEDGE MANAGEMENT</p>
-            <Link
-              className={`${styles.navItem} ${pledgeRecordsActive ? styles.navItemActive : ""}`}
-              href="/pledges"
-              aria-current={pledgeRecordsActive ? "page" : undefined}
-              title={navTitle("Pledge Records")}
-              onClick={() => setMenuOpen(false)}
-            >
-              <Gem aria-hidden="true" />
-              <span>Pledge Records</span>
-            </Link>
+            <p className={styles.groupLabel}>REPORTS</p>
             <Link
               className={`${styles.navItem} ${pledgeReportActive ? styles.navItemActive : ""}`}
               href="/pledges/report"
@@ -409,6 +419,13 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
                     </button>
                   )}
                 </div>
+                <form className={styles.companyNameForm} onSubmit={handleCompanyNameSubmit}>
+                  <label htmlFor="company-name">Company name</label>
+                  <div>
+                    <input id="company-name" required maxLength={255} value={companyNameDraft} onChange={(event) => setCompanyNameDraft(event.target.value)} disabled={companyNameBusy} />
+                    <button type="submit" disabled={companyNameBusy || !companyNameDraft.trim()}>{companyNameBusy ? "Saving…" : "Save"}</button>
+                  </div>
+                </form>
                 <div className={styles.appearanceHeading}><span>Appearance</span><small>{theme}</small></div>
                 <div className={styles.themeOptions} role="group" aria-label="Theme options">
                   {themeOptions.map(({ value, label, icon: Icon }) => (

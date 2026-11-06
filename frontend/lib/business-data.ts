@@ -86,6 +86,10 @@ export type Customer = {
   customer_type: CustomerType;
   monthly_interest_amount: string | null;
   interest_credit_basis: string | null;
+  credit_interest_type: BusinessSourceInterestType;
+  credit_interest_amount: string | null;
+  credit_basis: string | null;
+  credit_period_days: number | null;
   business_source: number | null;
   source_entry?: number | null;
   source_name?: string;

@@ -2241,6 +2241,172 @@ html[data-jms-theme="dark"] .modal-backdrop {
   font-weight: 760;
 }
 
+/* Unified Accounts workspace: composed from the existing cards, controls, and table tokens. */
+.financial-kpis {
+  margin-bottom: 20px;
+}
+
+.financial-kpis .source-account-card small {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.financial-records-toolbar {
+  min-height: 68px;
+}
+
+.financial-record-tabs {
+  width: min(430px, 48vw);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.financial-record-filters {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  padding: 12px 16px;
+  border: 1px solid var(--app-border);
+  border-bottom: 0;
+  background: var(--app-surface);
+}
+
+.financial-record-search {
+  width: auto;
+  min-width: 230px;
+  flex: 1 1 260px;
+}
+
+.financial-records-table-wrap {
+  border-radius: 0 0 12px 12px;
+}
+
+.financial-records-table {
+  min-width: 980px;
+}
+
+.financial-records-table td {
+  height: 68px;
+}
+
+.financial-primary-cell,
+.financial-secondary-cell,
+.financial-breakdown-cell {
+  vertical-align: middle;
+}
+
+.financial-primary-cell strong,
+.financial-secondary-cell strong,
+.financial-breakdown-cell strong {
+  display: block;
+  color: var(--app-text-strong);
+  font-weight: 700;
+}
+
+.financial-primary-cell span,
+.financial-secondary-cell span,
+.financial-breakdown-cell span {
+  display: block;
+  margin-top: 3px;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 520;
+}
+
+.financial-primary-cell span {
+  font-family: var(--font-geist-mono);
+  font-size: 11.5px;
+}
+
+.financial-breakdown-cell,
+.financial-outstanding-cell,
+.financial-numeric-heading {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.financial-outstanding-cell {
+  font-weight: 720;
+}
+
+.record-type-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 0 9px;
+  border: 1px solid var(--app-border);
+  border-radius: 13px;
+  color: var(--app-text);
+  background: var(--app-surface-muted);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.record-type-bill {
+  color: var(--app-muted);
+  background: var(--app-chip);
+}
+
+.financial-actions-heading {
+  text-align: right;
+}
+
+.financial-row-actions {
+  justify-content: flex-end;
+}
+
+.financial-action {
+  width: 36px;
+  height: 36px;
+  flex-basis: 36px;
+  color: var(--app-text);
+  background: var(--app-surface);
+}
+
+.financial-action:hover:not(:disabled) {
+  color: var(--app-text-strong);
+  background: var(--app-surface-muted);
+}
+
+.financial-action-danger {
+  color: color-mix(in srgb, var(--app-red) 72%, var(--app-text));
+}
+
+.financial-action-danger:hover:not(:disabled) {
+  color: var(--app-red);
+  background: var(--app-red-wash);
+}
+
+.financial-action:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+@media (max-width: 760px) {
+  .financial-records-toolbar {
+    align-items: stretch;
+  }
+
+  .financial-record-tabs {
+    width: 100%;
+  }
+
+  .financial-record-filters {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .financial-record-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .financial-record-tabs button {
+    min-height: 42px;
+    padding: 0 5px;
+    font-size: 12.5px;
+  }
+}
+
 .source-credit-notice {
   display: grid;
   gap: 3px;
@@ -2982,3 +3148,206 @@ html[data-jms-theme="dark"] .modal-backdrop {
   .business-source-details-window { width: 95vw; height: 88vh; max-height: 92vh; padding: 18px; }
 }
 .customer-folio-toolbar { flex-wrap: wrap; gap: 12px; }
+
+/* Shared narrow-screen behavior for every application module. */
+@media screen and (max-width: 760px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .page-content,
+  .integrated-module,
+  .page-heading > div,
+  .detail-heading > div,
+  .table-title-group,
+  .table-filters,
+  .form-stack,
+  .bill-create-form,
+  .pledge-create-form {
+    min-width: 0;
+  }
+
+  .page-heading h1,
+  .detail-heading h1,
+  .page-description,
+  .modal-heading h2,
+  .modal-intro,
+  .notice,
+  .table-footnote,
+  .detail-summary,
+  .source-filter-summary,
+  .source-statement-note {
+    overflow-wrap: anywhere;
+  }
+
+  .table-filters,
+  .bill-filters,
+  .pledge-filters,
+  .customer-folio-toolbar,
+  .modal-actions,
+  .detail-actions,
+  .folio-actions {
+    flex-wrap: wrap;
+  }
+
+  .data-table-wrap,
+  .bhaka-document-table-wrap {
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .modal-panel,
+  .customer-details-popup,
+  .customer-folio-window,
+  .business-source-details-window,
+  .bhaka-preview-panel {
+    max-width: calc(100vw - 16px);
+  }
+
+  .customer-details-popup,
+  .customer-folio-window,
+  .business-source-details-window {
+    width: calc(100vw - 16px);
+    height: min(88dvh, 760px);
+  }
+
+  .source-history-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .source-history-pagination > div {
+    width: 100%;
+  }
+
+  .source-history-pagination .button {
+    flex: 1;
+  }
+
+  .detail-summary {
+    max-width: 100%;
+  }
+
+  .customer-folio-content .folio-customer-name span {
+    display: block;
+    margin: 5px 0 0;
+  }
+
+  .form-field input,
+  .form-field select,
+  .form-field textarea,
+  .local-search input,
+  .bill-summary-input-row input,
+  .bill-input-with-prefix input,
+  .pledge-money-input input {
+    font-size: 16px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .page-content {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .page-heading h1,
+  .detail-heading h1 {
+    font-size: 20px;
+  }
+
+  .page-description {
+    font-size: 13.5px;
+  }
+
+  .table-filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .table-filters > *,
+  .table-filters .local-search,
+  .filter-select-wrap,
+  .filter-select-wrap select,
+  .filter-select-wrap > button,
+  .pledge-search,
+  .pledge-date-filter,
+  .bill-date-filter {
+    width: 100%;
+    max-width: none;
+  }
+
+  .button,
+  .icon-button,
+  .table-action,
+  .bill-view-button {
+    min-height: 44px;
+  }
+
+  .modal-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions > .button,
+  .detail-actions > .button,
+  .folio-actions > .button {
+    width: 100%;
+  }
+
+  .modal-panel,
+  .customer-details-popup,
+  .customer-folio-window,
+  .business-source-details-window {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    padding: 18px 16px;
+    border-radius: 14px 14px 8px 8px;
+  }
+
+  .modal-heading {
+    gap: 8px;
+  }
+
+  .modal-heading h2 {
+    font-size: 18px;
+  }
+
+  .bill-item-header,
+  .pledge-item-header,
+  .bill-section-heading,
+  .pledge-section-heading {
+    align-items: flex-start;
+  }
+
+  .bill-field-label {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .bill-field-label small {
+    margin-left: 0;
+    white-space: normal;
+  }
+
+  .bill-summary-list > div:not(.bill-summary-error),
+  .bill-item-calculation > div {
+    align-items: flex-start;
+  }
+
+  .account-bill-status-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .bhaka-document dl > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .bhaka-document dd {
+    text-align: left;
+  }
+}

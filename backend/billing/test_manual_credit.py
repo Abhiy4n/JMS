@@ -50,6 +50,70 @@ class ManualCreditTests(APITestCase):
         self.assertEqual(calculate_customer_credit(credit, self.start)["interest_due"], "2250.00")
         self.assertEqual(calculate_customer_credit(credit, self.start + timedelta(days=30))["interest_due"], "4500.00")
 
+    def test_configured_individual_percentage_is_immediate_and_frozen(self):
+        source = BusinessSource.objects.create(
+            name="Configured individual", source_type="INDIVIDUAL", phone="9800000000",
+            interest_type="PERCENTAGE", interest_percentage=Decimal("2.0000"), days=30,
+        )
+        self.customer.business_source = source
+        self.customer.save()
+        credit = self.issue("100000.00")
+        self.assertEqual(credit.credit_interest_type, "PERCENTAGE")
+        self.assertEqual(credit.credit_period_days, 30)
+        for day, accrued in ((1, "2000.00"), (30, "2000.00"), (31, "4000.00")):
+            self.assertEqual(
+                calculate_customer_credit(credit, self.start + timedelta(days=day - 1))["interest_due"],
+                accrued,
+            )
+
+        source.interest_percentage = Decimal("5.0000")
+        source.save(update_fields=("interest_percentage",))
+        self.assertEqual(calculate_customer_credit(credit, self.start)["interest_due"], "2000.00")
+        newer_credit = self.issue("100000.00")
+        self.assertEqual(calculate_customer_credit(newer_credit, self.start)["interest_due"], "5000.00")
+
+    def test_company_percentage_uses_fifteen_day_periods(self):
+        source = BusinessSource.objects.create(
+            name="Configured company", source_type="COMPANY", pan_vat_number="123456789",
+            interest_type="PERCENTAGE", interest_percentage=Decimal("2.0000"), days=15,
+        )
+        self.customer.business_source = source
+        self.customer.save()
+        credit = self.issue("10000.00")
+        self.assertEqual(credit.credit_interest_type, "PERCENTAGE")
+        for day, accrued in ((1, "200.00"), (15, "200.00"), (16, "400.00"), (30, "400.00"), (31, "600.00")):
+            self.assertEqual(
+                calculate_customer_credit(credit, self.start + timedelta(days=day - 1))["interest_due"],
+                accrued,
+            )
+
+    def test_dynamic_percentage_and_fixed_custom_periods(self):
+        percentage_source = BusinessSource.objects.create(
+            name="Dynamic percentage", source_type="DYNAMIC", phone="9800000000",
+            interest_type="PERCENTAGE", interest_percentage=Decimal("3.5000"), days=10,
+        )
+        self.customer.business_source = percentage_source
+        self.customer.save()
+        percentage_credit = self.issue("50000.00")
+        for day, accrued in ((1, "1750.00"), (10, "1750.00"), (11, "3500.00")):
+            self.assertEqual(
+                calculate_customer_credit(percentage_credit, self.start + timedelta(days=day - 1))["interest_due"],
+                accrued,
+            )
+
+        fixed_source = BusinessSource.objects.create(
+            name="Dynamic fixed", source_type="DYNAMIC", phone="9811111111",
+            interest_type="FIXED_AMOUNT", interest_amount=Decimal("500.00"), days=7,
+        )
+        self.customer.business_source = fixed_source
+        self.customer.save()
+        fixed_credit = self.issue("12345.00")
+        self.assertEqual(calculate_customer_credit(fixed_credit, self.start)["interest_due"], "500.00")
+        self.assertEqual(
+            calculate_customer_credit(fixed_credit, self.start + timedelta(days=7))["interest_due"],
+            "1000.00",
+        )
+
     def test_principal_payment_reduces_future_interest_only(self):
         credit = self.issue()
         CustomerCreditPayment.objects.create(credit=credit, effective_date=self.start + timedelta(days=15), principal_amount=Decimal("50000"))

@@ -48,12 +48,12 @@ export default function SourceCustomersDialog({ source, onClose, onChanged, onAd
         <div><dt>Created Date</dt><dd>{source.created_at ? new Date(source.created_at).toLocaleDateString() : "—"}</dd></div>
         <div><dt>PAN/VAT Number</dt><dd>{source.pan_vat_number || "—"}</dd></div>
         <div><dt>Email</dt><dd>{source.email || "—"}</dd></div>
-        {source.source_type === "DYNAMIC" && <>
+        <>
           <div><dt>Interest Type</dt><dd>{source.interest_type === "PERCENTAGE" ? "Percentage" : source.interest_type === "FIXED_AMOUNT" ? "Fixed Amount" : "—"}</dd></div>
-          <div><dt>Interest %</dt><dd>{source.interest_percentage ?? "—"}</dd></div>
-          <div><dt>Interest Amount</dt><dd>{source.interest_amount ?? "—"}</dd></div>
+          {source.interest_type === "PERCENTAGE" && <div><dt>Interest %</dt><dd>{source.interest_percentage ?? "—"}</dd></div>}
+          {source.interest_type === "FIXED_AMOUNT" && <div><dt>Interest Amount</dt><dd>{source.interest_amount ?? "—"}</dd></div>}
           <div><dt>Days</dt><dd>{source.days ?? "—"}</dd></div>
-        </>}
+        </>
       </dl>
       {error && <p className="notice notice-error" role="alert">{error}</p>}
       {loading ? <p>Loading customers...</p> : error ? <button type="button" className="button button-secondary" onClick={() => { setLoading(true); setReload((key) => key + 1); }}>Retry loading customers</button> : <div className="source-customer-list">

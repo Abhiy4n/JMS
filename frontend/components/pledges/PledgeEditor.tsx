@@ -81,6 +81,7 @@ export default function PledgeEditor(props: EditorProps) {
 
 function PledgeEditorDraft({ mode, pledge }: EditorProps) {
   const editing = mode === "edit";
+  const financialTermsLocked = Boolean(pledge?.credit_id);
   const cancelHref = pledge ? `/pledges/${pledge.id}/form` : "/pledges";
   const router = useRouter();
   const toast = useToast();
@@ -170,8 +171,8 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
 
     if (!selectedCustomer) nextFieldErrors.customer = "Select a customer.";
     if (!pledgeDate) nextFieldErrors.pledge_date = "Pledge date is required.";
-    if (!amountReceived.trim() || !Number.isFinite(amount) || amount < 0) {
-      nextFieldErrors.amount_received = "Enter a non-negative amount.";
+    if (!amountReceived.trim() || !Number.isFinite(amount) || amount <= 0) {
+      nextFieldErrors.amount_received = "Enter an amount greater than zero.";
     } else if ((amountReceived.split(".")[1] ?? "").length > 2) {
       nextFieldErrors.amount_received = "Use at most 2 decimal places.";
     }
@@ -305,6 +306,7 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
           {customersLoading && <p role="status">Loading customers...</p>}
           {!customersLoading && !customerError && !customers.length && <p className="notice">Add a customer in Customers before creating a pledge.</p>}
           <p className="page-description">Customer, pledge date, amount received, and every item’s description, weight, and quantity are required. Due date is optional.</p>
+          {financialTermsLocked && <p className="notice notice-info">Customer and amount are locked because this Pledge already has a Credit agreement. The pledge date can be changed until a payment is recorded.</p>}
           <p className="page-description" aria-live="polite">Business source: {selectedCustomer?.source_name || "Set by the selected customer"}</p>
           <PledgePaperForm
             mode={mode}
@@ -320,13 +322,13 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
               removeItem: (index) => removeItem(items[index].key),
               itemActionsDisabled: submitting,
               customer: <>
-                <Select aria-label="कारोबारी — Customer" value={customerId} disabled={submitting || customersLoading || Boolean(customerError)} aria-invalid={Boolean(fieldErrors.customer)} aria-describedby={fieldErrors.customer ? "paper-customer-error" : undefined}
+                <Select aria-label="कारोबारी — Customer" value={customerId} disabled={financialTermsLocked || submitting || customersLoading || Boolean(customerError)} aria-invalid={Boolean(fieldErrors.customer)} aria-describedby={fieldErrors.customer ? "paper-customer-error" : undefined}
                   options={[{ value: "", label: "कारोबारी छान्नुहोस्" }, ...customers.map((customer) => ({ value: String(customer.id), label: `${customer.name} · #${customer.id}${customer.phone ? ` · ${customer.phone}` : ""}` }))]}
                   onChange={(value) => { setCustomerId(value); clearFieldError("customer"); }} />
                 {fieldErrors.customer && <span id="paper-customer-error" data-field-error lang="en">{fieldErrors.customer}</span>}
               </>,
-              amountReceived: <PaperInput id="paper-amount" label="लिएको रकम — Amount received (NPR)" required type="number" min="0" max="999999999999.99" step="0.01" inputMode="decimal"
-                value={amountReceived} disabled={submitting} error={fieldErrors.amount_received}
+              amountReceived: <PaperInput id="paper-amount" label="लिएको रकम — Amount received (NPR)" required type="number" min="0.01" max="999999999999.99" step="0.01" inputMode="decimal"
+                value={amountReceived} disabled={financialTermsLocked || submitting} error={fieldErrors.amount_received}
                 onChange={(event) => { setAmountReceived(event.target.value); clearFieldError("amount_received"); }} />,
               pledgeDate: <>
                 <DatePicker id="paper-date" aria-label="मिति — Pledge date (AD)" required value={pledgeDate} disabled={submitting} aria-invalid={Boolean(fieldErrors.pledge_date)} aria-describedby={fieldErrors.pledge_date ? "paper-date-error" : undefined}

@@ -2,11 +2,12 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { RotateCcw, Trash2 } from "lucide-react";
+import { ExternalLink, Eye, Pencil, RotateCcw, Trash2, WalletCards } from "lucide-react";
 
-import { useToast } from "@/components/toast/ToastProvider";
+import CreditDetailsDialog from "@/components/CreditDetailsDialog";
 import DatePicker from "@/components/date-picker/DatePicker";
 import Select from "@/components/select/Select";
+import { useToast } from "@/components/toast/ToastProvider";
 import {
   BILL_STATUSES,
   deleteBill,
@@ -15,73 +16,84 @@ import {
   fetchBills,
 } from "@/lib/bill-data";
 import { fetchBusinessSources, fetchCustomers, type BusinessSource, type Customer } from "@/lib/business-data";
+import { fetchCredits, type CustomerCredit } from "@/lib/credit-data";
 import { userFacingError } from "@/lib/user-facing-error";
+
+type RecordTab = "ALL" | "PLEDGES" | "BILLS";
+type FinancialRecord =
+  | { kind: "PLEDGE"; date: string; data: CustomerCredit }
+  | { kind: "BILL"; date: string; data: Bill };
+
+const RECORD_TABS: Array<{ value: RecordTab; label: string }> = [
+  { value: "ALL", label: "All records" },
+  { value: "PLEDGES", label: "Pledges" },
+  { value: "BILLS", label: "Bills" },
+];
 
 const STATUS_LABELS: Record<BillStatus, string> = {
   DRAFT: "Draft",
   UNPAID: "Due",
-  PARTIAL: "Partial",
+  PARTIAL: "Partially paid",
   PAID: "Paid",
   CANCELLED: "Cancelled",
 };
 
-const moneyFormatter = new Intl.NumberFormat(undefined, {
+const moneyFormatter = new Intl.NumberFormat("en-NP", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
-function formatMoney(value: string) {
+function formatMoney(value: string | number) {
   const amount = Number(value);
-  return Number.isFinite(amount) ? moneyFormatter.format(amount) : value;
+  return Number.isFinite(amount) ? `NPR ${moneyFormatter.format(amount)}` : String(value);
+}
+
+function formatDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 }
 
 function summarizeBills(bills: Bill[]) {
   return bills.reduce(
     (totals, bill) => {
       if (bill.status === "DRAFT" || bill.status === "CANCELLED") return totals;
-      totals.count += 1;
-      totals.totalCents += Math.round(Number(bill.grand_total) * 100);
-      totals.unpaidCents += Math.round(Number(bill.amount_due) * 100);
-      totals.paidCents += Math.round(Number(bill.amount_paid) * 100);
+      totals.outstanding += Number(bill.amount_due);
+      totals.collected += Number(bill.amount_paid);
       return totals;
     },
-    { count: 0, totalCents: 0, unpaidCents: 0, paidCents: 0 }
+    { outstanding: 0, collected: 0 }
   );
 }
 
-function formatCents(value: number) {
-  return moneyFormatter.format(value / 100);
-}
-
-function formatDate(value: string) {
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+function creditStatus(credit: CustomerCredit): BillStatus {
+  return credit.financial_status === "PARTIALLY_PAID" ? "PARTIAL" : credit.financial_status;
 }
 
 export default function AccountBillsPage() {
   return (
-    <Suspense fallback={<p className="detail-loading">Loading account bills...</p>}>
-      <AccountBillsList />
+    <Suspense fallback={<p className="detail-loading">Loading financial records...</p>}>
+      <FinancialRecords />
     </Suspense>
   );
 }
 
-function AccountBillsList() {
+function FinancialRecords() {
   const [bills, setBills] = useState<Bill[]>([]);
-  const [summaryBills, setSummaryBills] = useState<Bill[]>([]);
+  const [pledgeCredits, setPledgeCredits] = useState<CustomerCredit[]>([]);
+  const [selectedCredit, setSelectedCredit] = useState<CustomerCredit | null>(null);
   const [sources, setSources] = useState<BusinessSource[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [recordTab, setRecordTab] = useState<RecordTab>("ALL");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<BillStatus | "">("");
   const [businessSource, setBusinessSource] = useState("");
   const [customer, setCustomer] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [recordsLoading, setRecordsLoading] = useState(true);
   const [filtersLoading, setFiltersLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [summaryError, setSummaryError] = useState("");
+  const [recordsError, setRecordsError] = useState("");
   const [filtersError, setFiltersError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [filtersReloadKey, setFiltersReloadKey] = useState(0);
@@ -92,15 +104,13 @@ function AccountBillsList() {
     let current = true;
     Promise.all([fetchBusinessSources(), fetchCustomers()])
       .then(([sourceData, customerData]) => {
-        if (current) {
-          setSources(sourceData);
-          setCustomers(customerData);
-        }
+        if (!current) return;
+        setSources(sourceData);
+        setCustomers(customerData);
+        setFiltersError("");
       })
       .catch((requestError: unknown) => {
-        if (current) {
-          setFiltersError(userFacingError(requestError, "Could not load bill filter options."));
-        }
+        if (current) setFiltersError(userFacingError(requestError, "Could not load record filter options."));
       })
       .finally(() => {
         if (current) setFiltersLoading(false);
@@ -111,20 +121,22 @@ function AccountBillsList() {
   useEffect(() => {
     let current = true;
     const timer = window.setTimeout(() => {
-      setSummaryLoading(true);
-      setSummaryError("");
-      fetchBills()
-        .then((data) => {
-          if (current) setSummaryBills(data);
+      setRecordsLoading(true);
+      setRecordsError("");
+      Promise.all([fetchBills(), fetchCredits()])
+        .then(([billData, creditData]) => {
+          if (!current) return;
+          setBills(billData);
+          setPledgeCredits(creditData.filter((credit) => credit.pledge !== null));
         })
         .catch((requestError: unknown) => {
-          if (current) {
-            setSummaryBills([]);
-            setSummaryError(userFacingError(requestError, "Could not load bill totals. Please try again."));
-          }
+          if (!current) return;
+          setBills([]);
+          setPledgeCredits([]);
+          setRecordsError(userFacingError(requestError, "Could not load financial records. Please try again."));
         })
         .finally(() => {
-          if (current) setSummaryLoading(false);
+          if (current) setRecordsLoading(false);
         });
     }, 200);
 
@@ -134,49 +146,74 @@ function AccountBillsList() {
     };
   }, [reloadKey]);
 
-  useEffect(() => {
-    let current = true;
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      setError("");
-      fetchBills({
-        search,
-        status: status || undefined,
-        business_source: businessSource ? Number(businessSource) : undefined,
-        customer: customer ? Number(customer) : undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-      })
-        .then((data) => {
-          if (current) setBills(data);
-        })
-        .catch((requestError: unknown) => {
-          if (current) {
-            setBills([]);
-            setError(userFacingError(requestError, "Could not load bills. Please try again."));
-          }
-        })
-        .finally(() => {
-          if (current) setLoading(false);
-        });
-    }, 200);
-
-    return () => {
-      current = false;
-      window.clearTimeout(timer);
-    };
-  }, [search, status, businessSource, customer, dateFrom, dateTo, reloadKey]);
-
+  const customerById = useMemo(
+    () => new Map(customers.map((entry) => [entry.id, entry])),
+    [customers]
+  );
+  const sourceById = useMemo(
+    () => new Map(sources.map((source) => [source.id, source])),
+    [sources]
+  );
   const visibleCustomers = useMemo(
     () => businessSource
       ? customers.filter((entry) => entry.business_source === Number(businessSource))
       : customers,
     [businessSource, customers]
   );
-  const hasFilters = Boolean(
-    search.trim() || status || businessSource || customer || dateFrom || dateTo
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const filteredBills = useMemo(() => bills.filter((bill) => {
+    if (recordTab === "PLEDGES") return false;
+    if (status && bill.status !== status) return false;
+    if (businessSource && bill.business_source_id !== Number(businessSource)) return false;
+    if (customer && bill.customer !== Number(customer)) return false;
+    if (dateFrom && bill.bill_date < dateFrom) return false;
+    if (dateTo && bill.bill_date > dateTo) return false;
+    return !normalizedSearch
+      || bill.bill_number.toLowerCase().includes(normalizedSearch)
+      || bill.customer_name.toLowerCase().includes(normalizedSearch)
+      || bill.business_source_name.toLowerCase().includes(normalizedSearch);
+  }), [bills, businessSource, customer, dateFrom, dateTo, normalizedSearch, recordTab, status]);
+
+  const filteredCredits = useMemo(() => pledgeCredits.filter((credit) => {
+    if (recordTab === "BILLS") return false;
+    if (status && creditStatus(credit) !== status) return false;
+    if (customer && credit.customer !== Number(customer)) return false;
+    if (businessSource && customerById.get(credit.customer)?.business_source !== Number(businessSource)) return false;
+    if (dateFrom && credit.credit_date < dateFrom) return false;
+    if (dateTo && credit.credit_date > dateTo) return false;
+    const sourceName = sourceById.get(customerById.get(credit.customer)?.business_source ?? -1)?.name || "";
+    return !normalizedSearch
+      || credit.customer_name.toLowerCase().includes(normalizedSearch)
+      || (credit.pledge_number || "").toLowerCase().includes(normalizedSearch)
+      || sourceName.toLowerCase().includes(normalizedSearch);
+  }), [businessSource, customer, customerById, dateFrom, dateTo, normalizedSearch, pledgeCredits, recordTab, sourceById, status]);
+
+  const visibleRecords = useMemo<FinancialRecord[]>(() => [
+    ...filteredCredits.map((credit) => ({ kind: "PLEDGE" as const, date: credit.credit_date, data: credit })),
+    ...filteredBills.map((bill) => ({ kind: "BILL" as const, date: bill.bill_date, data: bill })),
+  ].sort((left, right) => right.date.localeCompare(left.date)), [filteredBills, filteredCredits]);
+
+  const billSummary = summarizeBills(bills);
+  const pledgeSummary = pledgeCredits.reduce(
+    (totals, credit) => {
+      const principalDue = Number(credit.calculation.principal_due);
+      const interestDue = Number(credit.calculation.interest_due);
+      totals.principalDue += principalDue;
+      totals.interestDue += interestDue;
+      totals.outstanding += Number(credit.calculation.total_due);
+      totals.collected += Math.max(0, Number(credit.principal_amount) - principalDue)
+        + Number(credit.calculation.interest_paid);
+      return totals;
+    },
+    { principalDue: 0, interestDue: 0, outstanding: 0, collected: 0 }
   );
-  const summary = summarizeBills(summaryBills);
+  const totalOutstanding = billSummary.outstanding + pledgeSummary.outstanding;
+  const totalCollected = billSummary.collected + pledgeSummary.collected;
+  const collectionBase = totalOutstanding + totalCollected;
+  const collectionProgress = collectionBase > 0 ? (totalCollected / collectionBase) * 100 : null;
+  const visibleRecordCount = visibleRecords.length;
+  const hasFilters = Boolean(search.trim() || status || businessSource || customer || dateFrom || dateTo);
 
   function clearFilters() {
     setSearch("");
@@ -205,45 +242,49 @@ function AccountBillsList() {
     }
   }
 
+  const emptyTitle = hasFilters ? "No matching financial records" : `No ${recordTab === "ALL" ? "financial records" : recordTab.toLowerCase()} yet`;
+  const emptyDescription = hasFilters
+    ? "Try adjusting or clearing the shared filters."
+    : "Bills and Pledge balances will appear here when available.";
+
   return (
     <>
-      <section className="page-heading">
+      <section className="page-heading financial-page-heading">
         <div>
           <p className="eyebrow">ACCOUNTS</p>
-          <h1>Bills</h1>
-          <p className="page-description">Browse and filter all bills, payments, and outstanding balances.</p>
+          <h1>Financial records</h1>
+          <p className="page-description">Review bills, Pledge balances, and collections in one workspace.</p>
         </div>
       </section>
 
-      {summaryError && (
+      {recordsError && (
         <div className="bill-error-row">
-          <p className="notice notice-error" role="alert">{summaryError}</p>
-          <button
-            className="button button-secondary button-small"
-            type="button"
-            onClick={() => setReloadKey((key) => key + 1)}
-          >
-            Retry totals
+          <p className="notice notice-error" role="alert">{recordsError}</p>
+          <button className="button button-secondary button-small" type="button" onClick={() => setReloadKey((key) => key + 1)}>
+            Retry
           </button>
         </div>
       )}
 
-      <section className="source-account-cards" aria-label="Bill totals">
+      <section className="source-account-cards financial-kpis" aria-label="Financial overview">
         <article className="source-account-card">
-          <span>Total bills</span>
-          <strong>{summaryLoading || summaryError ? "—" : summary.count}</strong>
+          <span>Total outstanding</span>
+          <strong>{recordsLoading || recordsError ? "—" : formatMoney(totalOutstanding)}</strong>
         </article>
         <article className="source-account-card">
-          <span>Total bills amount</span>
-          <strong>{summaryLoading || summaryError ? "—" : formatCents(summary.totalCents)}</strong>
+          <span>Pledge principal due</span>
+          <strong>{recordsLoading || recordsError ? "—" : formatMoney(pledgeSummary.principalDue)}</strong>
         </article>
         <article className="source-account-card">
-          <span>Total unpaid amount</span>
-          <strong>{summaryLoading || summaryError ? "—" : formatCents(summary.unpaidCents)}</strong>
+          <span>Pledge interest due</span>
+          <strong>{recordsLoading || recordsError ? "—" : formatMoney(pledgeSummary.interestDue)}</strong>
         </article>
         <article className="source-account-card">
-          <span>Total paid amount</span>
-          <strong>{summaryLoading || summaryError ? "—" : formatCents(summary.paidCents)}</strong>
+          <span>Collection progress</span>
+          <strong>{recordsLoading || recordsError || collectionProgress === null ? "—" : `${collectionProgress.toFixed(1)}%`}</strong>
+          {!recordsLoading && !recordsError && collectionProgress !== null && (
+            <small>{formatMoney(totalCollected)} collected</small>
+          )}
         </article>
       </section>
 
@@ -264,37 +305,38 @@ function AccountBillsList() {
         </div>
       )}
 
-      {error && (
-        <div className="bill-error-row">
-          <p className="notice notice-error" role="alert">{error}</p>
-          <button
-            className="button button-secondary button-small"
-            type="button"
-            onClick={() => setReloadKey((key) => key + 1)}
-          >
-            Retry
-          </button>
+      <section className="financial-records-panel" aria-labelledby="financial-records-title">
+        <div className="table-toolbar financial-records-toolbar">
+          <div className="table-title-group">
+            <h2 id="financial-records-title">Records</h2>
+            <span className="record-count">{recordsLoading ? "—" : visibleRecordCount}</span>
+          </div>
+          <div className="segmented-control financial-record-tabs" role="tablist" aria-label="Financial record type">
+            {RECORD_TABS.map((tab) => (
+              <button
+                key={tab.value}
+                className={recordTab === tab.value ? "segment-active" : ""}
+                type="button"
+                role="tab"
+                aria-selected={recordTab === tab.value}
+                aria-controls="financial-records-table"
+                onClick={() => setRecordTab(tab.value)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
 
-      <div className="table-toolbar bill-toolbar">
-        <div className="table-title-group">
-          <h2>All bills</h2>
-          <span className="record-count">{loading ? "—" : bills.length}</span>
-        </div>
-        <div className="table-filters bill-filters">
-          <label className="local-search bill-search">
+        <div className="table-filters financial-record-filters">
+          <label className="local-search financial-record-search">
             <span className="search-glyph" aria-hidden="true">⌕</span>
-            <span className="sr-only">Search bills, customers, and business sources</span>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Bill number, customer, source..."
-            />
+            <span className="sr-only">Search financial records</span>
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Reference, customer, source..." />
           </label>
           <div className="filter-select-wrap">
             <Select
-              aria-label="Filter bill status"
+              aria-label="Filter by payment status"
               value={status}
               options={[{ value: "", label: "All statuses" }, ...BILL_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))]}
               onChange={setStatus}
@@ -322,106 +364,119 @@ function AccountBillsList() {
             />
           </div>
           <div className="filter-select-wrap bill-date-filter">
-            <DatePicker
-              aria-label="From date"
-              value={dateFrom}
-              max={dateTo || undefined}
-              onChange={setDateFrom}
-            />
+            <DatePicker aria-label="From date" value={dateFrom} max={dateTo || undefined} onChange={setDateFrom} />
           </div>
           <div className="filter-select-wrap bill-date-filter">
-            <DatePicker
-              aria-label="To date"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={setDateTo}
-            />
+            <DatePicker aria-label="To date" value={dateTo} min={dateFrom || undefined} onChange={setDateTo} />
           </div>
-          <button
-            className="button button-secondary button-small bill-clear-button"
-            type="button"
-            onClick={clearFilters}
-            disabled={!hasFilters}
-          >
+          <button className="button button-secondary button-small bill-clear-button" type="button" onClick={clearFilters} disabled={!hasFilters}>
             <RotateCcw size={14} aria-hidden="true" />
             Clear
           </button>
         </div>
-      </div>
 
-      <div className="data-table-wrap">
-        <table className="data-table bill-table">
-          <thead>
-            <tr>
-              <th scope="col">Bill Number</th>
-              <th scope="col">Customer</th>
-              <th scope="col">Business Source</th>
-              <th scope="col">Bill Date</th>
-              <th scope="col">Total</th>
-              <th scope="col">Amount Paid</th>
-              <th scope="col">Amount Due</th>
-              <th scope="col">Status</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={9} className="table-message">Loading bills...</td></tr>
-            ) : error ? (
-              <tr><td colSpan={9} className="table-message">Bills could not be loaded.</td></tr>
-            ) : bills.length === 0 ? (
+        <div id="financial-records-table" className="data-table-wrap financial-records-table-wrap" role="tabpanel" aria-busy={recordsLoading}>
+          <table className="data-table financial-records-table">
+            <thead>
               <tr>
-                <td colSpan={9} className="table-message empty-message">
-                  <strong>{hasFilters ? "No matching bills" : "No bills yet"}</strong>
-                  <span>{hasFilters ? "Try adjusting or clearing the filters." : "Bills will appear here when available."}</span>
-                </td>
+                <th scope="col">Customer / reference</th>
+                <th scope="col">Type</th>
+                <th scope="col">Date / source</th>
+                <th scope="col" className="financial-numeric-heading">Financial details</th>
+                <th scope="col" className="financial-numeric-heading">Outstanding</th>
+                <th scope="col">Status</th>
+                <th scope="col" className="financial-actions-heading">Actions</th>
               </tr>
-            ) : bills.map((bill) => (
-              <tr key={bill.id}>
-                <td className="bill-number-cell">{bill.bill_number}</td>
-                <td>{bill.customer_name}</td>
-                <td>{bill.business_source_name || "—"}</td>
-                <td>{formatDate(bill.bill_date)}</td>
-                <td className="bill-amount-cell">{formatMoney(bill.grand_total)}</td>
-                <td className="bill-amount-cell">{formatMoney(bill.amount_paid)}</td>
-                <td className="bill-amount-cell">{formatMoney(bill.status === "CANCELLED" ? "0.00" : bill.amount_due)}</td>
-                <td>
-                  <span className={`status-badge status-${bill.status.toLowerCase()}`}>
-                    {STATUS_LABELS[bill.status]}
-                  </span>
-                </td>
-                <td>
-                  <div className="bill-row-actions">
-                    <Link
-                      className="button button-secondary button-small"
-                      href={`/bills/${bill.id}`}
-                      aria-label={`View bill ${bill.bill_number}`}
-                    >
-                      View
-                    </Link>
-                    <Link
-                      className="button button-secondary button-small"
-                      href={`/bills/new?edit=${bill.id}`}
-                      aria-label={`Edit bill ${bill.bill_number}`}
-                    >
-                      Edit
-                    </Link>
-                    <button
-                      className="button button-danger-outline button-small"
-                      type="button"
-                      aria-label={`Delete bill ${bill.bill_number}`}
-                      disabled={deletingId === bill.id}
-                      onClick={() => handleDelete(bill)}
-                    >
-                      {deletingId === bill.id ? "Deleting..." : "Delete"}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {recordsLoading ? (
+                <tr><td colSpan={7} className="table-message" role="status">Loading financial records...</td></tr>
+              ) : recordsError ? (
+                <tr><td colSpan={7} className="table-message">Financial records could not be loaded.</td></tr>
+              ) : visibleRecordCount === 0 ? (
+                <tr><td colSpan={7} className="table-message empty-message"><strong>{emptyTitle}</strong><span>{emptyDescription}</span></td></tr>
+              ) : visibleRecords.map((record) => {
+                if (record.kind === "PLEDGE") {
+                  const credit = record.data;
+                  const relatedCustomer = customerById.get(credit.customer);
+                  const sourceName = sourceById.get(relatedCustomer?.business_source ?? -1)?.name;
+                  const pledgeReference = credit.pledge_number || `Pledge #${credit.pledge}`;
+                  const normalizedStatus = creditStatus(credit);
+                  return (
+                    <tr key={`pledge-${credit.id}`}>
+                      <td className="financial-primary-cell"><strong>{credit.customer_name}</strong><span>{pledgeReference}</span></td>
+                      <td><span className="record-type-badge">Pledge</span></td>
+                      <td className="financial-secondary-cell"><strong>{formatDate(credit.credit_date)}</strong><span>{sourceName || "No business source"}</span></td>
+                      <td className="financial-breakdown-cell"><strong>{formatMoney(credit.calculation.principal_due)}</strong><span>{formatMoney(credit.calculation.interest_due)} interest</span></td>
+                      <td className="financial-outstanding-cell">{formatMoney(credit.calculation.total_due)}</td>
+                      <td><span className={`status-badge status-${normalizedStatus.toLowerCase()}`}>{STATUS_LABELS[normalizedStatus]}</span></td>
+                      <td>
+                        <div className="bill-row-actions financial-row-actions">
+                          <button
+                            className="icon-button financial-action"
+                            type="button"
+                            aria-label={`View balance and record payment for ${pledgeReference}`}
+                            title="View balance and record payment"
+                            onClick={() => setSelectedCredit(credit)}
+                          >
+                            <WalletCards size={17} aria-hidden="true" />
+                          </button>
+                          <Link className="icon-button financial-action" href={`/pledges/${credit.pledge}/form`} aria-label={`Open related Pledge ${pledgeReference}`} title="Open related Pledge">
+                            <ExternalLink size={17} aria-hidden="true" />
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                const bill = record.data;
+                return (
+                  <tr key={`bill-${bill.id}`}>
+                    <td className="financial-primary-cell"><strong>{bill.customer_name}</strong><span>{bill.bill_number}</span></td>
+                    <td><span className="record-type-badge record-type-bill">Bill</span></td>
+                    <td className="financial-secondary-cell"><strong>{formatDate(bill.bill_date)}</strong><span>{bill.business_source_name || "No business source"}</span></td>
+                    <td className="financial-breakdown-cell"><strong>{formatMoney(bill.grand_total)}</strong><span>{formatMoney(bill.amount_paid)} paid</span></td>
+                    <td className="financial-outstanding-cell">{formatMoney(bill.status === "CANCELLED" ? 0 : bill.amount_due)}</td>
+                    <td><span className={`status-badge status-${bill.status.toLowerCase()}`}>{STATUS_LABELS[bill.status]}</span></td>
+                    <td>
+                      <div className="bill-row-actions financial-row-actions">
+                        <Link className="icon-button financial-action" href={`/bills/${bill.id}`} aria-label={`View bill ${bill.bill_number}`} title="View bill">
+                          <Eye size={17} aria-hidden="true" />
+                        </Link>
+                        {bill.status !== "CANCELLED" && (
+                          <Link className="icon-button financial-action" href={`/bills/new?edit=${bill.id}`} aria-label={`Edit bill ${bill.bill_number}`} title="Edit bill">
+                            <Pencil size={16} aria-hidden="true" />
+                          </Link>
+                        )}
+                        <button
+                          className="icon-button financial-action financial-action-danger"
+                          type="button"
+                          aria-label={deletingId === bill.id ? `Deleting bill ${bill.bill_number}` : `Delete bill ${bill.bill_number}`}
+                          title="Delete bill"
+                          disabled={deletingId === bill.id}
+                          onClick={() => handleDelete(bill)}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {selectedCredit && (
+        <CreditDetailsDialog
+          key={selectedCredit.id}
+          initialCredit={selectedCredit}
+          onClose={() => setSelectedCredit(null)}
+          onUpdated={() => setReloadKey((key) => key + 1)}
+        />
+      )}
     </>
   );
 }

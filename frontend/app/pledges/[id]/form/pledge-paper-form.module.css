@@ -362,7 +362,69 @@
 }
 
 @media (max-width: 640px) {
+  .viewport {
+    margin-top: 14px;
+    overflow-x: visible;
+  }
+
   .sheet {
+    min-width: 0;
     padding: 18px 14px;
+    overflow-x: auto;
+    font-size: 15px;
+  }
+
+  .title {
+    margin-bottom: 14px;
+    font-size: 23px;
+  }
+
+  .partyGrid,
+  .terms {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .address {
+    grid-column: 1;
+  }
+
+  .sectionHeading {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .sectionHeading h3 {
+    grid-column: 1;
+    grid-row: 1;
+    text-align: left;
+  }
+
+  .paperSerial {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .amount {
+    padding-right: 0;
+  }
+
+  .itemToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .addItem {
+    width: 100%;
+  }
+
+  .items,
+  .footer {
+    min-width: 620px;
+  }
+
+  .sheet input,
+  .sheet select,
+  .sheet textarea {
+    font-size: 16px;
   }
 }

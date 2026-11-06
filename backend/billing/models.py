@@ -5,7 +5,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
-from accounts.models import Customer
+from accounts.models import BusinessSource, Customer
 
 
 MONEY_PLACES = Decimal("0.01")
@@ -110,12 +110,22 @@ class CustomerCredit(models.Model):
     """Manually issued customer credit, independent of jewellery sale bills."""
 
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="credits")
+    pledge = models.OneToOneField(
+        "pledges.Pledge", on_delete=models.PROTECT, related_name="credit",
+        null=True, blank=True,
+    )
     credit_date = models.DateField(default=timezone.localdate)
     principal_amount = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))])
     # Freeze the source/customer agreement when the credit is entered.
     credit_customer_type = models.CharField(max_length=16, choices=Customer.Type.choices)
-    credit_interest_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    credit_interest_type = models.CharField(
+        max_length=16,
+        choices=BusinessSource.InterestType.choices,
+        default=BusinessSource.InterestType.PERCENTAGE,
+    )
+    credit_interest_amount = models.DecimalField(max_digits=16, decimal_places=4)
     credit_basis = models.DecimalField(max_digits=14, decimal_places=2)
+    credit_period_days = models.PositiveIntegerField(default=30)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

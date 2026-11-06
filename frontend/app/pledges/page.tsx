@@ -208,20 +208,21 @@ function PledgeRecords() {
               <th scope="col">Amount Received</th>
               <th scope="col">Due Date</th>
               <th scope="col">Status</th>
+              <th scope="col">Payment</th>
               <th scope="col">Overdue</th>
               <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
             {dateRangeError ? (
-              <tr><td colSpan={9} className="table-message">Choose a valid pledge date range to view records.</td></tr>
+              <tr><td colSpan={10} className="table-message">Choose a valid pledge date range to view records.</td></tr>
             ) : loading ? (
-              <tr><td colSpan={9} className="table-message" role="status">Loading Pledge records...</td></tr>
+              <tr><td colSpan={10} className="table-message" role="status">Loading Pledge records...</td></tr>
             ) : error ? (
-              <tr><td colSpan={9} className="table-message">Pledge records could not be loaded.</td></tr>
+              <tr><td colSpan={10} className="table-message">Pledge records could not be loaded.</td></tr>
             ) : pledges.length === 0 ? (
               <tr>
-                <td colSpan={9} className="table-message empty-message">
+                <td colSpan={10} className="table-message empty-message">
                   <strong>{hasFilters ? "No matching Pledge records" : "No Pledge records yet"}</strong>
                   <span>
                     {hasFilters
@@ -243,6 +244,7 @@ function PledgeRecords() {
                     {STATUS_LABELS[pledge.status]}
                   </span>
                 </td>
+                <td>{pledge.financial_status === "NOT_LINKED" ? "Historical · not linked" : pledge.financial_status.replaceAll("_", " ")}</td>
                 <td>
                   {pledge.is_overdue
                     ? <span className="pledge-overdue-badge">Overdue</span>

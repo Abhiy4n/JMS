@@ -4,6 +4,9 @@ from django.db import transaction
 from rest_framework import serializers
 
 from accounts.models import Customer
+from billing.credit_serializers import CustomerCreditSerializer
+from billing.interest import calculate_customer_credit
+from billing.models import CustomerCredit
 
 from .models import Pledge, PledgeItem, nepal_today
 
@@ -57,9 +60,13 @@ class PledgeSerializer(serializers.ModelSerializer):
     amount_received = serializers.DecimalField(
         max_digits=14,
         decimal_places=2,
-        min_value=Decimal("0.00"),
+        min_value=Decimal("0.01"),
     )
     is_overdue = serializers.BooleanField(read_only=True)
+    elapsed_days = serializers.SerializerMethodField()
+    credit_id = serializers.IntegerField(source="credit.id", read_only=True, default=None)
+    credit_calculation = serializers.SerializerMethodField()
+    financial_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Pledge
@@ -75,6 +82,10 @@ class PledgeSerializer(serializers.ModelSerializer):
             "due_date",
             "status",
             "is_overdue",
+            "elapsed_days",
+            "credit_id",
+            "credit_calculation",
+            "financial_status",
             "redeemed_date",
             "cancelled_date",
             "items",
@@ -88,6 +99,10 @@ class PledgeSerializer(serializers.ModelSerializer):
             "business_source_id",
             "business_source_name",
             "is_overdue",
+            "elapsed_days",
+            "credit_id",
+            "credit_calculation",
+            "financial_status",
             "redeemed_date",
             "cancelled_date",
             "created_at",
@@ -111,6 +126,30 @@ class PledgeSerializer(serializers.ModelSerializer):
             "due_date",
             pledge.due_date if pledge is not None else None,
         )
+
+        if pledge is not None and hasattr(pledge, "credit"):
+            protected_fields = {
+                "customer": pledge.customer,
+                "amount_received": pledge.amount_received,
+            }
+            for field, current_value in protected_fields.items():
+                if field in attrs and attrs[field] != current_value:
+                    raise serializers.ValidationError({
+                        field: "Cannot change after this Pledge creates its Credit agreement."
+                    })
+            if "pledge_date" in attrs and pledge_date != pledge.pledge_date:
+                if pledge.credit.payments.exists():
+                    raise serializers.ValidationError({
+                        "pledge_date": "Cannot change the Pledge date after a payment has been recorded."
+                    })
+                if pledge_date > nepal_today():
+                    raise serializers.ValidationError({
+                        "pledge_date": "Pledge date cannot be in the future."
+                    })
+            if new_status == Pledge.Status.CANCELLED and new_status != pledge.status:
+                raise serializers.ValidationError({
+                    "status": "Linked Pledges cannot be cancelled because accounting reversal is not available."
+                })
 
         if due_date and pledge_date and due_date < pledge_date:
             raise serializers.ValidationError(
@@ -142,7 +181,39 @@ class PledgeSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"pledge_date": "Pledge date cannot be after the cancellation date."}
                 )
+        if pledge is None:
+            credit_serializer = CustomerCreditSerializer(data={
+                "customer": attrs["customer"].pk,
+                "credit_date": pledge_date.isoformat(),
+                "principal_amount": attrs["amount_received"],
+                "notes": "Created from Pledge",
+            }, context=self.context)
+            credit_serializer.is_valid(raise_exception=True)
+            self._credit_serializer = credit_serializer
         return attrs
+
+    @staticmethod
+    def _credit(obj):
+        try:
+            return obj.credit
+        except CustomerCredit.DoesNotExist:
+            return None
+
+    def get_credit_calculation(self, obj):
+        credit = self._credit(obj)
+        return calculate_customer_credit(credit) if credit else None
+
+    def get_elapsed_days(self, obj):
+        return max((nepal_today() - obj.pledge_date).days, 0)
+
+    def get_financial_status(self, obj):
+        credit = self._credit(obj)
+        if not credit:
+            return "NOT_LINKED"
+        calculation = calculate_customer_credit(credit)
+        if Decimal(calculation["total_due"]) == 0:
+            return "PAID"
+        return "PARTIALLY_PAID" if credit.payments.exists() else "UNPAID"
 
     @transaction.atomic
     def create(self, validated_data):
@@ -150,14 +221,45 @@ class PledgeSerializer(serializers.ModelSerializer):
         pledge = Pledge.objects.create(**validated_data)
         for item_data in items_data:
             PledgeItem.objects.create(pledge=pledge, **item_data)
+        self._credit_serializer.save(
+            pledge=pledge,
+            notes=f"Pledge {pledge.pledge_number}",
+        )
         return pledge
 
     @transaction.atomic
     def update(self, instance, validated_data):
         items_data = validated_data.pop("items", serializers.empty)
+        linked_credit = None
+        pledge_date_changed = (
+            "pledge_date" in validated_data
+            and validated_data["pledge_date"] != instance.pledge_date
+        )
+        if pledge_date_changed:
+            try:
+                linked_credit = CustomerCredit.objects.select_for_update().prefetch_related("payments").get(pledge=instance)
+            except CustomerCredit.DoesNotExist:
+                linked_credit = None
+            if linked_credit and linked_credit.payments.exists():
+                raise serializers.ValidationError({
+                    "pledge_date": "Cannot change the Pledge date after a payment has been recorded."
+                })
+        if validated_data.get("status") == Pledge.Status.REDEEMED:
+            try:
+                credit = CustomerCredit.objects.select_for_update().prefetch_related("payments").get(pledge=instance)
+            except CustomerCredit.DoesNotExist:
+                credit = None
+            if credit and Decimal(calculate_customer_credit(credit)["total_due"]) != 0:
+                raise serializers.ValidationError({
+                    "status": "Settle all principal and accrued interest before redeeming this Pledge."
+                })
         for field, value in validated_data.items():
             setattr(instance, field, value)
         instance.save()
+
+        if linked_credit:
+            linked_credit.credit_date = instance.pledge_date
+            linked_credit.save(update_fields=("credit_date",))
 
         if items_data is not serializers.empty:
             instance.items.all().delete()

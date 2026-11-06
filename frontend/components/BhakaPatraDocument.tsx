@@ -1,8 +1,8 @@
 import type { Customer, BusinessSource } from "@/lib/business-data";
 import { formatBhakaPatraAmount as money, formatBhakaPatraDate as date, type CustomerBhakaPatraRecord } from "@/lib/customer-bhaka-patra";
 
-export default function BhakaPatraDocument({ record, customer, source }: {
-  record: CustomerBhakaPatraRecord; customer: Customer; source?: BusinessSource | null;
+export default function BhakaPatraDocument({ record, customer, source, companyName = "Admin" }: {
+  record: CustomerBhakaPatraRecord; customer: Customer; source?: BusinessSource | null; companyName?: string;
 }) {
   if (record.customer_id !== customer.id) return <p role="alert">This document does not belong to the selected customer.</p>;
   const items = record.items ?? [];
@@ -13,7 +13,7 @@ export default function BhakaPatraDocument({ record, customer, source }: {
     ["Interest Amount", record.interest_amount], ["Outstanding Balance", record.outstanding_balance],
   ];
   return <article className="bhaka-document" aria-label={`Bhaka Patra ${record.reference || "without number"}`}>
-    <header className="bhaka-document-header"><div><p className="eyebrow">Shree Ganesh Jewellers</p><h2>BHAKA PATRA</h2></div><dl><div><dt>Rakha Patra Number</dt><dd>{record.reference || "Unavailable"}</dd></div><div><dt>Transaction date</dt><dd>{date(record.transaction_date)}</dd></div></dl></header>
+    <header className="bhaka-document-header"><div><p className="eyebrow">{companyName}</p><h2>BHAKA PATRA</h2></div><dl><div><dt>Rakha Patra Number</dt><dd>{record.reference || "Unavailable"}</dd></div><div><dt>Transaction date</dt><dd>{date(record.transaction_date)}</dd></div></dl></header>
     <section className="bhaka-document-customer" aria-label="Customer information"><h3>Customer information</h3><strong>{customer.name}</strong><dl>
       <div><dt>Customer ID</dt><dd>{customer.id}</dd></div>
       {customer.phone && <div><dt>Phone</dt><dd>{customer.phone}</dd></div>}

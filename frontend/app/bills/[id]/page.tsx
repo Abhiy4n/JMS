@@ -9,6 +9,7 @@ import { Printer, Trash2 } from "lucide-react";
 import { useToast } from "@/components/toast/ToastProvider";
 import { deleteBill, type Bill, type BillStatus, fetchBill } from "@/lib/bill-data";
 import { userFacingError } from "@/lib/user-facing-error";
+import { useCompanyName } from "@/lib/use-company-name";
 
 const STATUS_LABELS: Record<BillStatus, string> = {
   DRAFT: "Draft",
@@ -34,6 +35,7 @@ function formatDate(value: string) {
 }
 
 export default function BillDetailPage() {
+  const companyName = useCompanyName();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const billId = Number(params.id);
@@ -130,7 +132,7 @@ export default function BillDetailPage() {
           <div className="bill-print-area">
             <header className="bill-print-header">
               <div>
-                <p className="eyebrow">SHREE GANESH JEWELLERS</p>
+                <p className="eyebrow">{companyName}</p>
                 <h2>Bill / Invoice</h2>
               </div>
               <div className="bill-print-number"><strong>{bill.bill_number}</strong><span>{formatDate(bill.bill_date)}</span></div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { ToastProvider } from "@/components/toast/ToastProvider";
+import { AuthProvider } from "@/components/auth/AuthProvider";
 import AppChrome from "@/components/AppChrome";
 import "./globals.css";
 import "./reconciliation.css";
@@ -28,7 +29,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('jms-theme');if(t==='dark'||t==='gold'||t==='light')document.documentElement.dataset.jmsTheme=t;if(localStorage.getItem('jms-sidebar-collapsed')==='1')document.documentElement.dataset.jmsSidebar='collapsed';}catch(e){}})();` }} />
       </head>
       <body className="min-h-full flex flex-col font-sans">
-        <ToastProvider><AppChrome>{children}</AppChrome></ToastProvider>
+        <ToastProvider><AuthProvider><AppChrome>{children}</AppChrome></AuthProvider></ToastProvider>
       </body>
     </html>
   );

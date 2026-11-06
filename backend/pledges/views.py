@@ -14,7 +14,8 @@ class PledgeListCreateView(generics.ListCreateAPIView):
         queryset = Pledge.objects.select_related(
             "customer",
             "customer__business_source",
-        ).prefetch_related("items")
+            "credit",
+        ).prefetch_related("items", "credit__payments")
         search = self.request.query_params.get("search", "").strip()
         filter_params = {
             key: value.strip()
@@ -48,7 +49,8 @@ class PledgeDetailView(generics.RetrieveUpdateAPIView):
     queryset = Pledge.objects.select_related(
         "customer",
         "customer__business_source",
-    ).prefetch_related("items")
+        "credit",
+    ).prefetch_related("items", "credit__payments")
     serializer_class = PledgeSerializer
     permission_classes = [permissions.IsAuthenticated]
 

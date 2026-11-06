@@ -1,10 +1,12 @@
 import type { AuthTokens, AuthUser } from "./api";
 
-const ACCESS_KEY = "jms_access";
-const REFRESH_KEY = "jms_refresh";
-const USER_KEY = "jms_user";
-const REMEMBER_KEY = "jms_remember";
+export const ACCESS_KEY = "jms_access";
+export const REFRESH_KEY = "jms_refresh";
+export const USER_KEY = "jms_user";
+export const REMEMBER_KEY = "jms_remember";
 export const AUTH_COOKIE = "jms_authenticated";
+export const SESSION_UPDATED_EVENT = "jms-session-updated";
+export const SESSION_EXPIRED_EVENT = "jms-session-expired";
 
 function canUseDom() {
   return typeof window !== "undefined";
@@ -33,7 +35,7 @@ function setAuthCookie(remember: boolean) {
 }
 
 function announceSessionUpdate() {
-  window.dispatchEvent(new Event("jms-session-updated"));
+  window.dispatchEvent(new Event(SESSION_UPDATED_EVENT));
 }
 
 function clearAuthCookie() {

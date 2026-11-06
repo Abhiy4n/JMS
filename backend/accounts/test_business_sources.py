@@ -22,6 +22,10 @@ class BusinessSourceIdentityTests(APITestCase):
             "address": "Kathmandu",
         }
         payload.update(overrides)
+        if payload["source_type"] == "COMPANY":
+            payload.setdefault("interest_type", "PERCENTAGE")
+            payload.setdefault("interest_percentage", "2.0000")
+            payload.setdefault("days", 15)
         return self.client.post(reverse("business-source-list"), payload, format="json")
 
     def test_individual_requires_name_phone_and_address(self):
@@ -31,25 +35,53 @@ class BusinessSourceIdentityTests(APITestCase):
                 self.assertEqual(response.status_code, 400, response.data)
         response = self.create_source()
         self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["interest_type"], "PERCENTAGE")
+        self.assertEqual(response.data["interest_percentage"], "2.0000")
+        self.assertEqual(response.data["days"], 30)
         self.assertEqual(response.data["customer_count"], 1)
         self.assertEqual(Customer.objects.count(), 1)
 
     def test_company_requires_pan_not_phone(self):
         invalid = self.create_source(source_type="COMPANY", phone="")
         self.assertEqual(invalid.status_code, 400)
-        phone_is_irrelevant = self.create_source(
+        company_with_phone = self.create_source(
             name="Company with phone",
             source_type="COMPANY",
             phone="9800000000",
             pan_vat_number="123456789",
         )
-        self.assertEqual(phone_is_irrelevant.status_code, 400)
+        self.assertEqual(company_with_phone.status_code, 201, company_with_phone.data)
+        self.assertEqual(company_with_phone.data["phone"], "9800000000")
         valid = self.create_source(source_type="COMPANY", phone="", pan_vat_number="123456789")
         self.assertEqual(valid.status_code, 201, valid.data)
         self.assertEqual(valid.data["pan_vat_number"], "123456789")
         self.assertEqual(valid.data["phone"], "")
+        self.assertEqual(valid.data["interest_type"], "PERCENTAGE")
+        self.assertEqual(valid.data["interest_percentage"], "2.0000")
+        self.assertEqual(valid.data["days"], 15)
         individual_with_pan = self.create_source(name="Individual with PAN", pan_vat_number="0012345")
         self.assertEqual(individual_with_pan.status_code, 400)
+
+        default_terms = self.client.post(reverse("business-source-list"), {
+            "name": "Company default terms", "source_type": "COMPANY",
+            "pan_vat_number": "987654321", "address": "Kathmandu",
+        }, format="json")
+        self.assertEqual(default_terms.status_code, 201, default_terms.data)
+        self.assertEqual(default_terms.data["interest_percentage"], "2.0000")
+        self.assertEqual(default_terms.data["days"], 15)
+
+    def test_individual_percentage_is_configurable_but_period_is_thirty_days(self):
+        configured = self.create_source(
+            name="Configured individual", interest_type="PERCENTAGE",
+            interest_percentage="3.1250", days=30,
+        )
+        self.assertEqual(configured.status_code, 201, configured.data)
+        self.assertEqual(configured.data["interest_percentage"], "3.1250")
+        invalid_period = self.create_source(
+            name="Wrong individual period", interest_type="PERCENTAGE",
+            interest_percentage="3.1250", days=29,
+        )
+        self.assertEqual(invalid_period.status_code, 400)
 
     def test_dynamic_requires_phone_interest_choice_and_positive_days(self):
         missing_phone = self.create_source(
@@ -89,6 +121,7 @@ class BusinessSourceIdentityTests(APITestCase):
 
         invalid_configurations = (
             {"interest_percentage": "-1"},
+            {"interest_percentage": "0"},
             {"interest_amount": "-1", "interest_type": "FIXED_AMOUNT"},
             {"interest_type": "FIXED_AMOUNT", "interest_amount": "0", "interest_percentage": "5"},
             {"interest_type": "PERCENTAGE", "interest_percentage": "5", "interest_amount": "1"},
@@ -141,7 +174,10 @@ class BusinessSourceIdentityTests(APITestCase):
     def test_type_filter_tracks_source_type_changes(self):
         source = BusinessSource.objects.create(name="Linked source", source_type="INDIVIDUAL", market_segment="Retail", phone="9800000000")
         Customer.objects.create(name="Linked", business_source=source, customer_type="INDIVIDUAL")
-        response = self.client.patch(reverse("business-source-detail", args=[source.id]), {"source_type": "COMPANY", "pan_vat_number": "123456789", "address": "Kathmandu"}, format="json")
+        response = self.client.patch(reverse("business-source-detail", args=[source.id]), {
+            "source_type": "COMPANY", "pan_vat_number": "123456789", "address": "Kathmandu",
+            "interest_type": "PERCENTAGE", "interest_percentage": "2.5000", "days": 15,
+        }, format="json")
         self.assertEqual(response.status_code, 200, response.data)
         filtered = self.client.get(reverse("customer-list"), {"customer_type": "COMPANY"})
         self.assertEqual(len(filtered.data), 1)
@@ -205,14 +241,15 @@ class BusinessSourceIdentityTests(APITestCase):
         detail = reverse("business-source-detail", args=[created.data["id"]])
         changed = self.client.patch(
             detail,
-            {"source_type": "COMPANY", "pan_vat_number": "0012345", "address": "Kathmandu"},
+            {"source_type": "COMPANY", "pan_vat_number": "0012345", "address": "Kathmandu",
+             "interest_type": "PERCENTAGE", "interest_percentage": "3.0000", "days": 15},
             format="json",
         )
         self.assertEqual(changed.status_code, 200, changed.data)
-        self.assertEqual(changed.data["phone"], "")
-        self.assertIsNone(changed.data["interest_type"])
-        self.assertIsNone(changed.data["interest_amount"])
-        self.assertIsNone(changed.data["days"])
+        self.assertEqual(changed.data["phone"], "9800000000")
+        self.assertEqual(changed.data["interest_type"], "PERCENTAGE")
+        self.assertEqual(changed.data["interest_percentage"], "3.0000")
+        self.assertEqual(changed.data["days"], 15)
 
     def test_delete_unassigned_source_never_deletes_unrelated_customers(self):
         # Legacy unassigned sources retain the existing deletion policy.

@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from django.db.models import Count, Q, Sum
@@ -102,7 +103,7 @@ class CustomerAccountView(APIView):
         rows = BillSerializer(bills, many=True).data
         principal = sum((Decimal(row["credit"]["principal_due"]) for row in rows), Decimal("0.00"))
         interest = sum((Decimal(row["credit"]["interest_due"]) for row in rows), Decimal("0.00"))
-        credits = list(CustomerCredit.objects.filter(customer=customer).prefetch_related("payments"))
+        credits = list(CustomerCredit.objects.filter(customer=customer).select_related("pledge").prefetch_related("payments"))
         credit_calculations = [calculate_customer_credit(credit) for credit in credits]
         manual_principal = sum((Decimal(item["principal_due"]) for item in credit_calculations), Decimal("0.00"))
         manual_interest = sum((Decimal(item["interest_due"]) for item in credit_calculations), Decimal("0.00"))
@@ -159,6 +160,63 @@ class BusinessSourceAccountView(APIView):
         filters_serializer = BusinessSourceAccountFiltersSerializer(data=request.query_params)
         filters_serializer.is_valid(raise_exception=True)
         filters = filters_serializer.validated_data
+
+        pledge_credits = list(
+            CustomerCredit.objects.filter(
+                customer__business_source_id=source.id,
+                pledge__isnull=False,
+            ).select_related("customer", "pledge").prefetch_related("payments")
+        )
+        pledge_credit_rows = []
+        pledge_credit_events = []
+        pledge_principal_due = Decimal("0.00")
+        pledge_interest_due = Decimal("0.00")
+        for credit in pledge_credits:
+            calculation = calculate_customer_credit(credit)
+            principal_due = Decimal(calculation["principal_due"])
+            interest_due = Decimal(calculation["interest_due"])
+            pledge_principal_due += principal_due
+            pledge_interest_due += interest_due
+            pledge_credit_rows.append({
+                "id": credit.id,
+                "pledge_id": credit.pledge_id,
+                "pledge_number": credit.pledge.pledge_number,
+                "customer_name": credit.customer.name,
+                "credit_date": credit.credit_date.isoformat(),
+                "principal_due": f"{principal_due:.2f}",
+                "interest_due": f"{interest_due:.2f}",
+                "total_due": calculation["total_due"],
+            })
+            pledge_credit_events.append((
+                credit.credit_date, 0, credit.id,
+                credit.pledge.pledge_number, "Pledge credit issued",
+                credit.principal_amount, Decimal("0.00"),
+            ))
+            for charge in calculation["charges"]:
+                pledge_credit_events.append((
+                    date.fromisoformat(charge["date"]), 1, credit.id,
+                    credit.pledge.pledge_number, f"Interest charge · period {charge['period']}",
+                    Decimal(charge["interest"]), Decimal("0.00"),
+                ))
+            for payment in credit.payments.all():
+                pledge_credit_events.append((
+                    payment.effective_date, 2, payment.id,
+                    credit.pledge.pledge_number, "Pledge payment",
+                    Decimal("0.00"), payment.principal_amount + payment.interest_amount,
+                ))
+
+        pledge_credit_statement = []
+        pledge_running_balance = Decimal("0.00")
+        for event_date, _, _, reference, description, debit, credit_amount in sorted(pledge_credit_events):
+            pledge_running_balance += debit - credit_amount
+            pledge_credit_statement.append({
+                "date": event_date.isoformat(),
+                "reference": reference,
+                "description": description,
+                "debit": f"{debit:.2f}",
+                "credit": f"{credit_amount:.2f}",
+                "balance": f"{pledge_running_balance:.2f}",
+            })
 
         source_bills = Bill.objects.filter(customer__business_source_id=source.id, transaction_type=Bill.TransactionType.SALE)
         valid_bills = source_bills.exclude(
@@ -254,6 +312,14 @@ class BusinessSourceAccountView(APIView):
             "source": {"id": source.id, "name": source.name},
             "summary": account_summary(valid_bills),
             "filtered_summary": account_summary(filtered_valid_bills),
+            "pledge_credit_summary": {
+                "total_credits": len(pledge_credits),
+                "principal_due": f"{pledge_principal_due:.2f}",
+                "interest_due": f"{pledge_interest_due:.2f}",
+                "total_due": f"{pledge_principal_due + pledge_interest_due:.2f}",
+            },
+            "pledge_credits": pledge_credit_rows,
+            "pledge_credit_statement": pledge_credit_statement,
             "history": {
                 "page": page_number,
                 "page_size": page_size,

@@ -235,6 +235,10 @@ class CustomerSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     new_business_source = NewBusinessSourceCategorySerializer(write_only=True, required=False)
+    credit_interest_type = serializers.SerializerMethodField()
+    credit_interest_amount = serializers.SerializerMethodField()
+    credit_basis = serializers.SerializerMethodField()
+    credit_period_days = serializers.SerializerMethodField()
 
     class Meta:
         model = Customer
@@ -251,6 +255,10 @@ class CustomerSerializer(serializers.ModelSerializer):
             "source_entry",
             "new_business_source",
             "source_name",
+            "credit_interest_type",
+            "credit_interest_amount",
+            "credit_basis",
+            "credit_period_days",
             "created_at",
         )
         read_only_fields = ("id", "source_name", "source_entry", "created_at")
@@ -260,6 +268,20 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         return validate_customer_email(value)
+
+    def get_credit_interest_type(self, obj):
+        return obj.credit_terms()[0]
+
+    def get_credit_interest_amount(self, obj):
+        value = obj.credit_terms()[1]
+        return f"{value:.2f}" if value is not None else None
+
+    def get_credit_basis(self, obj):
+        value = obj.credit_terms()[2]
+        return f"{value:.2f}" if value is not None else None
+
+    def get_credit_period_days(self, obj):
+        return obj.credit_terms()[3]
 
     def validate(self, attrs):
         # A linked source supplies authoritative terms, preventing rate overrides
@@ -274,7 +296,8 @@ class CustomerSerializer(serializers.ModelSerializer):
         if source:
             attrs["customer_type"] = source.source_type
             attrs["monthly_interest_amount"], attrs["interest_credit_basis"] = (
-                source.credit_terms() if source.source_type == BusinessSource.Type.DYNAMIC else (None, None)
+                (source.monthly_interest_amount, source.interest_credit_basis)
+                if source.source_type == BusinessSource.Type.DYNAMIC else (None, None)
             )
         kind = attrs.get("customer_type", self.instance.customer_type if self.instance else Customer.Type.INDIVIDUAL)
         if kind == Customer.Type.DYNAMIC:
@@ -341,8 +364,8 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
     monthly_interest_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.00"), required=False, allow_null=True)
     interest_credit_basis = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"), required=False, allow_null=True)
     interest_type = serializers.ChoiceField(choices=BusinessSource.InterestType.choices, required=False, allow_null=True)
-    interest_percentage = serializers.DecimalField(max_digits=9, decimal_places=4, min_value=Decimal("0.00"), required=False, allow_null=True)
-    interest_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.00"), required=False, allow_null=True)
+    interest_percentage = serializers.DecimalField(max_digits=9, decimal_places=4, min_value=Decimal("0.0001"), required=False, allow_null=True)
+    interest_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"), required=False, allow_null=True)
     days = serializers.IntegerField(min_value=1, required=False, allow_null=True)
 
     class Meta:
@@ -407,12 +430,7 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
         if not legacy_create and kind == BusinessSource.Type.COMPANY and not current("pan_vat_number").strip():
             errors["pan_vat_number"] = "PAN/VAT number is required for a Company source."
 
-        if kind == BusinessSource.Type.COMPANY:
-            if "phone" in attrs and attrs["phone"]:
-                errors["phone"] = "Phone is not used for a Company source."
-            elif source_type_changed:
-                attrs["phone"] = ""
-        elif kind == BusinessSource.Type.INDIVIDUAL:
+        if kind == BusinessSource.Type.INDIVIDUAL:
             if "pan_vat_number" in attrs and attrs["pan_vat_number"].strip():
                 errors["pan_vat_number"] = "PAN/VAT number is not used for an Individual source."
             elif source_type_changed:
@@ -420,18 +438,51 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
 
         config_fields = ("interest_type", "interest_percentage", "interest_amount", "days")
         config_was_submitted = any(field in attrs for field in config_fields)
-        if kind == BusinessSource.Type.DYNAMIC and self.context.get("legacy_customer_source"):
+        legacy_customer_source = self.context.get("legacy_customer_source")
+        if kind == BusinessSource.Type.DYNAMIC and legacy_customer_source:
             for field in ("monthly_interest_amount", "interest_credit_basis"):
                 if current(field, None) is None:
                     errors[field] = "Required for Dynamic credit terms."
-        elif kind == BusinessSource.Type.DYNAMIC and (
+        elif not legacy_customer_source and (
             self.instance is None or source_type_changed or config_was_submitted
         ):
+            if kind in (BusinessSource.Type.INDIVIDUAL, BusinessSource.Type.COMPANY) and self.instance is None and not config_was_submitted:
+                attrs.update(
+                    interest_type=BusinessSource.InterestType.PERCENTAGE,
+                    interest_percentage=Decimal("2.0000"),
+                    interest_amount=None,
+                    days=15 if kind == BusinessSource.Type.COMPANY else 30,
+                )
+            elif kind in (BusinessSource.Type.INDIVIDUAL, BusinessSource.Type.COMPANY) and source_type_changed:
+                attrs.setdefault("interest_type", BusinessSource.InterestType.PERCENTAGE)
+                attrs.setdefault("interest_percentage", Decimal("2.0000"))
+                attrs.setdefault("interest_amount", None)
+                attrs.setdefault("days", 15 if kind == BusinessSource.Type.COMPANY else 30)
+
             interest_type = current("interest_type", None)
             percentage = current("interest_percentage", None)
             amount = current("interest_amount", None)
             days = current("days", None)
-            if interest_type is None:
+
+            if kind == BusinessSource.Type.INDIVIDUAL:
+                if interest_type != BusinessSource.InterestType.PERCENTAGE:
+                    errors["interest_type"] = "Individual sources use percentage interest."
+                if percentage is None:
+                    errors["interest_percentage"] = "Interest % is required for an Individual source."
+                if amount is not None:
+                    errors["interest_amount"] = "Interest Amount is not used for an Individual source."
+                if days != 30:
+                    errors["days"] = "Individual sources use a 30-day period."
+            elif kind == BusinessSource.Type.COMPANY:
+                if interest_type != BusinessSource.InterestType.PERCENTAGE:
+                    errors["interest_type"] = "Company sources use percentage interest."
+                if percentage is None:
+                    errors["interest_percentage"] = "Interest % is required for a Company source."
+                if amount is not None:
+                    errors["interest_amount"] = "Interest Amount is not used for a Company source."
+                if days != 15:
+                    errors["days"] = "Company sources use a 15-day period."
+            elif interest_type is None:
                 errors["interest_type"] = "Choose Percentage or Fixed Amount."
             elif interest_type == BusinessSource.InterestType.PERCENTAGE:
                 if percentage is None:
@@ -445,16 +496,8 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
                     errors["interest_percentage"] = "Interest % is not used for Fixed Amount."
             if days is None:
                 errors["days"] = "Days must be a positive whole number."
-        elif kind != BusinessSource.Type.DYNAMIC:
-            for field in config_fields:
-                if field in attrs and attrs[field] is not None:
-                    errors[field] = "Interest configuration is only used for a Dynamic source."
 
-        if kind != BusinessSource.Type.DYNAMIC and (source_type_changed or config_was_submitted):
-            attrs.update({field: None for field in config_fields})
-            attrs["monthly_interest_amount"] = None
-            attrs["interest_credit_basis"] = None
-        if source_type_changed and kind == BusinessSource.Type.DYNAMIC:
+        if not legacy_customer_source and (source_type_changed or config_was_submitted):
             attrs["monthly_interest_amount"] = None
             attrs["interest_credit_basis"] = None
 

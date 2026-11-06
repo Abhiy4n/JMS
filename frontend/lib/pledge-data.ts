@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/auth/api";
 import { getAccessToken } from "@/lib/auth/storage";
+import type { CreditCalculation } from "@/lib/bill-data";
 
 export const PLEDGE_STATUSES = ["ACTIVE", "REDEEMED", "CANCELLED"] as const;
 
@@ -25,6 +26,10 @@ export type Pledge = {
   due_date: string | null;
   status: PledgeStatus;
   is_overdue: boolean;
+  elapsed_days: number;
+  credit_id: number | null;
+  credit_calculation: CreditCalculation | null;
+  financial_status: "NOT_LINKED" | "UNPAID" | "PARTIALLY_PAID" | "PAID";
   redeemed_date: string | null;
   cancelled_date: string | null;
   items: PledgeItem[];

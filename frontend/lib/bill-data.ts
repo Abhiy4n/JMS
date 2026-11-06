@@ -59,7 +59,7 @@ export type Bill = {
 
 // Server-calculated values are displayed directly; the browser never accrues money.
 export type CreditCalculation = {
-  as_of: string; period_days: number; interest_per_basis: string; credit_basis: string;
+  as_of: string; period_days: number; interest_type: "PERCENTAGE" | "FIXED_AMOUNT"; interest_rate_percentage: string | null; interest_per_basis: string; credit_basis: string;
   periods: number; interest_accrued: string; interest_paid: string; interest_due: string;
   principal_due: string; total_due: string; next_charge_date: string | null;
   charges: { period: number; date: string; through_date: string; principal: string; interest: string }[];

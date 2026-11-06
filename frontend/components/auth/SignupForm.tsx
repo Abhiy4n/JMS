@@ -7,14 +7,15 @@ import { UserPlus } from "lucide-react";
 
 import { useToast } from "@/components/toast/ToastProvider";
 import { ApiError, register } from "@/lib/auth/api";
-import { saveSession } from "@/lib/auth/storage";
 import { userFacingError } from "@/lib/user-facing-error";
+import { useAuth } from "./AuthProvider";
 
 import { PasswordInput } from "./PasswordInput";
 
 export function SignupForm() {
   const router = useRouter();
   const toast = useToast();
+  const { completeAuthentication } = useAuth();
   const [pending, setPending] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -28,14 +29,9 @@ export function SignupForm() {
 
     try {
       const data = await register({ name, email, password });
-      saveSession(
-        { access: data.access, refresh: data.refresh },
-        data.user,
-        true
-      );
+      completeAuthentication(data, true);
       toast.success(`Account created. Welcome, ${data.user.name}.`, { icon: UserPlus });
       router.replace("/dashboard");
-      router.refresh();
     } catch (err) {
       toast.error(
         err instanceof ApiError
@@ -74,7 +70,7 @@ export function SignupForm() {
             type="text"
             autoComplete="name"
             required
-            className="w-full border-0 border-b border-[#D4D4D4] bg-transparent py-2 text-[#1A1A1A] outline-none transition-colors placeholder:text-[#A3A3A3] focus:border-[#1A1A1A]"
+            className="w-full border-0 border-b border-[#D4D4D4] bg-transparent py-2 text-base text-[#1A1A1A] outline-none transition-colors placeholder:text-[#A3A3A3] focus:border-[#1A1A1A] sm:text-sm"
           />
         </div>
 
@@ -91,7 +87,7 @@ export function SignupForm() {
             type="email"
             autoComplete="email"
             required
-            className="w-full border-0 border-b border-[#D4D4D4] bg-transparent py-2 text-[#1A1A1A] outline-none transition-colors placeholder:text-[#A3A3A3] focus:border-[#1A1A1A]"
+            className="w-full border-0 border-b border-[#D4D4D4] bg-transparent py-2 text-base text-[#1A1A1A] outline-none transition-colors placeholder:text-[#A3A3A3] focus:border-[#1A1A1A] sm:text-sm"
           />
         </div>
 

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:auth": "node tests/auth-api.test.cjs",
+    "test:auth-browser": "node tests/auth-flow-browser.cjs"
   },
   "dependencies": {
     "lucide-react": "^1.51.0",

@@ -1,12 +1,16 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { WalletCards } from "lucide-react";
+
+import { useToast } from "@/components/toast/ToastProvider";
 import { recordCreditPayment, type CustomerCredit } from "@/lib/credit-data";
 import { userFacingError } from "@/lib/user-facing-error";
 
-const money = (value: string) => `Rs. ${Number(value).toLocaleString("en-NP", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (value: string) => `NPR ${Number(value).toLocaleString("en-NP", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function CreditDetailsDialog({ initialCredit, onClose, onUpdated }: { initialCredit: CustomerCredit; onClose: () => void; onUpdated: () => void }) {
+  const toast = useToast();
   const [credit, setCredit] = useState(initialCredit);
   const [principal, setPrincipal] = useState("");
   const [interest, setInterest] = useState("");
@@ -16,14 +20,24 @@ export default function CreditDetailsDialog({ initialCredit, onClose, onUpdated 
     event.preventDefault();
     if (saving) return;
     setSaving(true); setError("");
-    try { setCredit(await recordCreditPayment(credit.id, principal, interest)); setPrincipal(""); setInterest(""); onUpdated(); }
-    catch (failure) { setError(userFacingError(failure, "Could not record credit payment.")); }
+    try {
+      setCredit(await recordCreditPayment(credit.id, principal, interest));
+      setPrincipal("");
+      setInterest("");
+      toast.success("Payment recorded.", { icon: WalletCards });
+      onUpdated();
+    }
+    catch (failure) {
+      const message = userFacingError(failure, "Could not record credit payment.");
+      setError(message);
+      toast.error(message);
+    }
     finally { setSaving(false); }
   }
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
     <section className="modal-panel customer-details-popup" role="dialog" aria-modal="true" aria-labelledby="credit-detail-title">
-      <div className="modal-heading"><h2 id="credit-detail-title">CR-{credit.id} · {credit.customer_name}</h2><button className="icon-button" disabled={saving} onClick={onClose} aria-label="Close">×</button></div>
-      <p>{credit.calculation.interest_per_basis} interest per {credit.calculation.credit_basis} credit, every {credit.calculation.period_days} days from {credit.credit_date}.</p>
+      <div className="modal-heading"><h2 id="credit-detail-title">{credit.pledge_number || `CR-${credit.id}`} · {credit.customer_name}</h2><button className="icon-button" disabled={saving} onClick={onClose} aria-label="Close">×</button></div>
+      <p>{credit.calculation.interest_type === "FIXED_AMOUNT" ? `NPR ${credit.calculation.interest_per_basis} fixed interest` : `${credit.calculation.interest_rate_percentage}% interest`} every {credit.calculation.period_days} days from {credit.credit_date}.</p>
       <div className="credit-summary-grid"><div><span>Principal due</span><strong>{money(credit.calculation.principal_due)}</strong></div><div><span>Interest due</span><strong>{money(credit.calculation.interest_due)}</strong></div><div><span>Total due</span><strong>{money(credit.calculation.total_due)}</strong></div></div>
       {credit.notes && <p>{credit.notes}</p>}
       {Number(credit.calculation.total_due) > 0 && <form className="credit-payment-form" onSubmit={pay}><label className="form-field"><span>Principal payment</span><input type="number" min="0" max={credit.calculation.principal_due} step="0.01" value={principal} onChange={(event) => setPrincipal(event.target.value)} /></label><label className="form-field"><span>Interest payment</span><input type="number" min="0" max={credit.calculation.interest_due} step="0.01" value={interest} onChange={(event) => setInterest(event.target.value)} /></label><button className="button button-primary" disabled={saving}>{saving ? "Saving..." : "Record payment"}</button></form>}

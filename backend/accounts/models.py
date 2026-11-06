@@ -190,9 +190,15 @@ class BusinessSource(models.Model):
         return self.name
 
     def credit_terms(self):
+        if self.interest_type == self.InterestType.PERCENTAGE:
+            return self.interest_type, self.interest_percentage, Decimal("100.00"), self.days
+        if self.interest_type == self.InterestType.FIXED_AMOUNT:
+            return self.interest_type, self.interest_amount, Decimal("1.00"), self.days
+        # Compatibility for sources created before configurable terms existed.
         if self.source_type == self.Type.DYNAMIC:
-            return self.monthly_interest_amount, self.interest_credit_basis
-        return Decimal("2000.00"), Decimal("100000.00")
+            return self.InterestType.PERCENTAGE, self.monthly_interest_amount, self.interest_credit_basis, 30
+        period_days = 15 if self.source_type == self.Type.COMPANY else 30
+        return self.InterestType.PERCENTAGE, Decimal("2000.00"), Decimal("100000.00"), period_days
 
 
 class Customer(models.Model):
@@ -235,8 +241,9 @@ class Customer(models.Model):
         if self.business_source_id:
             return self.business_source.credit_terms()
         if self.customer_type == self.Type.DYNAMIC:
-            return self.monthly_interest_amount, self.interest_credit_basis
-        return Decimal("2000.00"), Decimal("100000.00")
+            return BusinessSource.InterestType.PERCENTAGE, self.monthly_interest_amount, self.interest_credit_basis, 30
+        period_days = 15 if self.customer_type == self.Type.COMPANY else 30
+        return BusinessSource.InterestType.PERCENTAGE, Decimal("2000.00"), Decimal("100000.00"), period_days
 
     @property
     def effective_customer_type(self):

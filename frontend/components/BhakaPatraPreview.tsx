@@ -7,10 +7,12 @@ import type { CustomerBhakaPatraRecord } from "@/lib/customer-bhaka-patra";
 import type { Customer, BusinessSource } from "@/lib/business-data";
 import { useDialog } from "@/lib/use-dialog";
 import { userFacingError } from "@/lib/user-facing-error";
+import { useCompanyName } from "@/lib/use-company-name";
 
 export default function BhakaPatraPreview({ customer, source, recordId, onClose }: {
   customer: Customer; source: BusinessSource | null; recordId: string; onClose: () => void;
 }) {
+  const companyName = useCompanyName();
   const panelRef = useRef<HTMLElement>(null);
   useDialog(panelRef, onClose);
   const [record, setRecord] = useState<CustomerBhakaPatraRecord | null>(null);
@@ -26,7 +28,7 @@ export default function BhakaPatraPreview({ customer, source, recordId, onClose 
   return <div className="modal-backdrop bhaka-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="bhaka-preview-title" className="modal-panel bhaka-preview-panel">
       <div className="modal-heading"><h2 id="bhaka-preview-title">Bhaka Patra preview</h2><button className="button button-secondary button-small" onClick={onClose}>Back to folio</button></div>
-      {error ? <div className="notice notice-error" role="alert">{error} <button className="button button-secondary button-small" onClick={() => { setError(""); setRetry((value) => value + 1); }}>Retry</button></div> : record ? <BhakaPatraDocument record={record} customer={customer} source={source} /> : <p className="detail-loading">Loading Bhaka Patra...</p>}
+      {error ? <div className="notice notice-error" role="alert">{error} <button className="button button-secondary button-small" onClick={() => { setError(""); setRetry((value) => value + 1); }}>Retry</button></div> : record ? <BhakaPatraDocument record={record} customer={customer} source={source} companyName={companyName} /> : <p className="detail-loading">Loading Bhaka Patra...</p>}
     </section>
   </div>;
 }

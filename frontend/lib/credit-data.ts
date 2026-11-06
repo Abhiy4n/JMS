@@ -5,7 +5,9 @@ import type { CustomerType } from "@/lib/business-data";
 
 export type CustomerCredit = {
   id: number; customer: number; customer_name: string; credit_date: string;
+  pledge: number | null; pledge_number: string | null;
   principal_amount: string; notes: string; credit_customer_type: CustomerType;
+  financial_status: "UNPAID" | "PARTIALLY_PAID" | "PAID";
   calculation: CreditCalculation;
 };
 export type NewCustomerCredit = Pick<CustomerCredit, "customer" | "credit_date" | "principal_amount" | "notes">;

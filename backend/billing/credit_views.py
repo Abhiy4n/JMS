@@ -13,7 +13,7 @@ class CustomerCreditListView(generics.ListCreateAPIView):
     serializer_class = CustomerCreditSerializer
 
     def get_queryset(self):
-        queryset = CustomerCredit.objects.select_related("customer").prefetch_related("payments")
+        queryset = CustomerCredit.objects.select_related("customer", "pledge").prefetch_related("payments")
         customer_id = self.request.query_params.get("customer", "")
         if customer_id:
             if not customer_id.isdecimal() or int(customer_id) <= 0:
@@ -23,7 +23,7 @@ class CustomerCreditListView(generics.ListCreateAPIView):
 
 
 class CustomerCreditDetailView(generics.RetrieveAPIView):
-    queryset = CustomerCredit.objects.select_related("customer").prefetch_related("payments")
+    queryset = CustomerCredit.objects.select_related("customer", "pledge").prefetch_related("payments")
     serializer_class = CustomerCreditSerializer
 
 
@@ -35,4 +35,5 @@ class CustomerCreditPaymentView(APIView):
         serializer = CustomerCreditPaymentSerializer(data=request.data, context={"credit": credit})
         serializer.is_valid(raise_exception=True)
         serializer.save(credit=credit, effective_date=timezone.localdate())
+        credit = CustomerCredit.objects.select_related("customer", "pledge").prefetch_related("payments").get(pk=credit.pk)
         return Response(CustomerCreditSerializer(credit).data, status=status.HTTP_201_CREATED)

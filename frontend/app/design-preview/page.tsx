@@ -79,11 +79,11 @@ export default function NavbarDesignPreview() {
       <section className={styles.stage} aria-label={`${theme} theme navigation preview`}>
         <aside className={`${styles.sidebar} ${mobileOpen ? styles.sidebarOpen : ""}`}>
           <div className={styles.brandRow}>
-            <a className={styles.brand} href="#" aria-label="Shree Ganesh Jewellers home">
+            <a className={styles.brand} href="#" aria-label="Admin home">
               <span className={styles.brandMark} aria-hidden="true"><Gem /></span>
               <span className={styles.brandText}>
-                <strong>Shree Ganesh</strong>
-                <small>Jewellers</small>
+                <strong>Admin</strong>
+                <small>JMS</small>
               </span>
             </a>
             <button className={styles.collapseButton} type="button" aria-label="Collapse sidebar">

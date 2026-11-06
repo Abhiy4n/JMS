@@ -164,6 +164,14 @@
   .canvas { padding: 23px 18px; }.statGrid { grid-template-columns: 1fr; }.contentGrid { grid-template-columns: 1fr; }.pageHeading { align-items: flex-start; flex-direction: column; }
 }
 
+@media (max-width: 480px) {
+  .preview { padding: 8px; }
+  .stage { height: calc(100dvh - 92px); min-height: 0; border-radius: 12px; }
+  .topbar { gap: 9px; padding: 0 10px; }
+  .notification,.mobileMenu { width: 36px; height: 36px; flex-basis: 36px; }
+  .canvas { padding: 20px 14px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .preview,.sidebar,.workspace { transition: none; }
 }

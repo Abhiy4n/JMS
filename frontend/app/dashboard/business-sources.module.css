@@ -44,7 +44,7 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width:760px) {
-  .heading { align-items: stretch; flex-direction: column; gap: 16px; }.heading h1 { font-size: 25px; }.primaryButton { width: 100%; }.toolbar { align-items: stretch; flex-direction: column; }.searchField,.filterSelect { width: 100%; }.tableFooter { align-items: flex-start; flex-direction: column; justify-content: center; padding-top: 12px; padding-bottom: 12px; }.backdrop { align-items: end; padding: 8px; }.dialog { max-height: 94dvh; border-radius: 14px 14px 9px 9px; }.formGrid { grid-template-columns: 1fr; }
+  .heading { align-items: stretch; flex-direction: column; gap: 16px; }.heading h1 { font-size: 25px; }.primaryButton { width: 100%; }.toolbar { align-items: stretch; flex-direction: column; }.searchField,.filterSelect { width: 100%; }.tableScroll { overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }.tableFooter { align-items: flex-start; flex-direction: column; justify-content: center; padding-top: 12px; padding-bottom: 12px; }.backdrop { align-items: end; padding: 8px; }.dialog { max-height: 94dvh; border-radius: 14px 14px 9px 9px; }.dialogHeader { grid-template-columns: 40px minmax(0,1fr) 36px; gap: 10px; padding: 18px 16px; }.dialogIcon { width: 40px; height: 40px; }.form fieldset { padding: 19px 16px; }.formGrid { grid-template-columns: 1fr; }.dialogActions { align-items: stretch; flex-direction: column-reverse; padding: 14px 16px; }.dialogActions button { width: 100%; }
 }
 
 @media (prefers-reduced-motion:reduce) { .backdrop,.dialog,.spinner { animation-duration: .01ms; animation-iteration-count: 1; } }

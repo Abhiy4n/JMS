@@ -10,12 +10,18 @@ from .models import Bill, quantize_money
 
 
 def calculate_interest(start_date, initial_credit, interest_paid, customer_type,
-                       interest_amount, credit_basis, changes, as_of=None, enabled=True):
+                       interest_amount, credit_basis, changes, as_of=None, enabled=True,
+                       interest_type="PERCENTAGE", period_days=None):
     """One schedule shared by legacy bill credit and the manual Credit module."""
     as_of = as_of or timezone.localdate()
-    period_days = 15 if customer_type == Customer.Type.COMPANY else 30
+    period_days = period_days or (15 if customer_type == Customer.Type.COMPANY else 30)
     result = {
         "as_of": as_of.isoformat(), "period_days": period_days,
+        "interest_type": interest_type,
+        "interest_rate_percentage": (
+            f"{interest_amount * Decimal('100') / credit_basis:.4f}"
+            if interest_type == "PERCENTAGE" and credit_basis else None
+        ),
         "interest_per_basis": f"{interest_amount:.2f}",
         "credit_basis": f"{credit_basis:.2f}",
         "periods": 0, "interest_accrued": "0.00", "interest_paid": f"{interest_paid:.2f}",
@@ -40,7 +46,9 @@ def calculate_interest(start_date, initial_credit, interest_paid, customer_type,
                 change_index += 1
         principal = max(balance, Decimal("0.00"))
         if principal > 0:
-            charge = quantize_money(principal * interest_amount / credit_basis)
+            charge = (interest_amount if interest_type == "FIXED_AMOUNT"
+                      else principal * interest_amount / credit_basis)
+            charge = quantize_money(charge)
             interest += charge
             result["periods"] += 1
             result["charges"].append({
@@ -90,5 +98,6 @@ def calculate_customer_credit(credit, as_of=None):
         credit.credit_date, credit.principal_amount, interest_paid, credit.credit_customer_type,
         credit.credit_interest_amount, credit.credit_basis,
         [(payment.effective_date, -payment.principal_amount) for payment in payments],
-        as_of=as_of,
+        as_of=as_of, interest_type=credit.credit_interest_type,
+        period_days=credit.credit_period_days,
     )

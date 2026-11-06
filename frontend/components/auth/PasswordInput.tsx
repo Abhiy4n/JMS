@@ -31,7 +31,7 @@ export function PasswordInput({
           type={visible ? "text" : "password"}
           autoComplete={autoComplete}
           required={required}
-          className="w-full border-0 border-b border-[#D4D4D4] bg-transparent py-2 pr-10 text-[#1A1A1A] outline-none transition-colors placeholder:text-[#A3A3A3] focus:border-[#1A1A1A]"
+          className="w-full border-0 border-b border-[#D4D4D4] bg-transparent py-2 pr-10 text-base text-[#1A1A1A] outline-none transition-colors placeholder:text-[#A3A3A3] focus:border-[#1A1A1A] sm:text-sm"
         />
         <button
           type="button"

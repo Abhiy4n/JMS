@@ -7,14 +7,15 @@ import { LogIn } from "lucide-react";
 
 import { useToast } from "@/components/toast/ToastProvider";
 import { ApiError, login } from "@/lib/auth/api";
-import { saveSession } from "@/lib/auth/storage";
 import { userFacingError } from "@/lib/user-facing-error";
+import { useAuth } from "./AuthProvider";
 
 import { PasswordInput } from "./PasswordInput";
 
 export function LoginForm() {
   const router = useRouter();
   const toast = useToast();
+  const { completeAuthentication } = useAuth();
   const [pending, setPending] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -28,14 +29,9 @@ export function LoginForm() {
 
     try {
       const data = await login({ email, password });
-      saveSession(
-        { access: data.access, refresh: data.refresh },
-        data.user,
-        remember
-      );
+      completeAuthentication(data, remember);
       toast.success(`Welcome back, ${data.user.name}.`, { icon: LogIn });
       router.replace("/dashboard");
-      router.refresh();
     } catch (err) {
       toast.error(
         err instanceof ApiError
@@ -74,13 +70,13 @@ export function LoginForm() {
             type="email"
             autoComplete="email"
             required
-            className="w-full border-0 border-b border-[#D4D4D4] bg-transparent py-2 text-[#1A1A1A] outline-none transition-colors placeholder:text-[#A3A3A3] focus:border-[#1A1A1A]"
+            className="w-full border-0 border-b border-[#D4D4D4] bg-transparent py-2 text-base text-[#1A1A1A] outline-none transition-colors placeholder:text-[#A3A3A3] focus:border-[#1A1A1A] sm:text-sm"
           />
         </div>
 
         <PasswordInput id="login-password" />
 
-        <div className="flex items-center justify-between gap-3 text-sm">
+        <div className="flex flex-col items-start justify-between gap-3 text-sm sm:flex-row sm:items-center">
           <label className="flex cursor-pointer items-center gap-2 text-[#8A8A8A]">
             <input
               type="checkbox"

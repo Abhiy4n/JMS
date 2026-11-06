@@ -29,6 +29,13 @@ const EMPTY_SUMMARY: AccountSummary = {
   credit_status: "CLEAR",
 };
 
+const EMPTY_PLEDGE_CREDIT_SUMMARY = {
+  total_credits: 0,
+  principal_due: "0.00",
+  interest_due: "0.00",
+  total_due: "0.00",
+};
+
 const HISTORY_STATUSES: { value: AccountHistoryStatus; label: string }[] = [
   { value: "ALL", label: "All statuses" },
   { value: "PAID", label: "Paid" },
@@ -174,6 +181,7 @@ export default function BusinessSourceDetailPage() {
   );
   const accountSummary = account?.summary ?? EMPTY_SUMMARY;
   const periodSummary = account?.filtered_summary ?? EMPTY_SUMMARY;
+  const pledgeCreditSummary = account?.pledge_credit_summary ?? EMPTY_PLEDGE_CREDIT_SUMMARY;
 
   return (
     <>
@@ -239,6 +247,14 @@ export default function BusinessSourceDetailPage() {
               <article className="source-account-card">
                 <span>Outstanding</span>
                 <strong>{accountLoading ? "—" : formatMoney(accountSummary.total_outstanding)}</strong>
+              </article>
+              <article className="source-account-card">
+                <span>Pledge principal due</span>
+                <strong>{accountLoading ? "—" : formatMoney(pledgeCreditSummary.principal_due)}</strong>
+              </article>
+              <article className="source-account-card">
+                <span>Pledge interest due</span>
+                <strong>{accountLoading ? "—" : formatMoney(pledgeCreditSummary.interest_due)}</strong>
               </article>
             </div>
             <div className={`source-credit-notice ${accountSummary.credit_status === "CREDIT" ? "source-credit-warning" : "source-credit-clear"}`}>
@@ -368,7 +384,7 @@ export default function BusinessSourceDetailPage() {
             )}
 
             {accountView === "HISTORY" ? (
-              <div className="data-table-wrap">
+              <><div className="data-table-wrap">
                 <table className="data-table source-account-table">
                   <thead>
                     <tr>
@@ -405,6 +421,13 @@ export default function BusinessSourceDetailPage() {
                   </tbody>
                 </table>
               </div>
+              <h3>Pledge Credits</h3>
+              <div className="data-table-wrap">
+                <table className="data-table source-account-table">
+                  <thead><tr><th>Pledge</th><th>Customer</th><th>Date</th><th>Principal due</th><th>Interest due</th><th>Total due</th></tr></thead>
+                  <tbody>{accountLoading ? <tr><td colSpan={6} className="table-message">Loading Pledge Credits...</td></tr> : !account?.pledge_credits.length ? <tr><td colSpan={6} className="table-message">No Pledge Credits for this source.</td></tr> : account.pledge_credits.map((credit) => <tr key={credit.id}><td><Link className="source-name-link" href={`/pledges/${credit.pledge_id}/form`}>{credit.pledge_number}</Link></td><td>{credit.customer_name}</td><td>{formatDate(credit.credit_date)}</td><td>{formatMoney(credit.principal_due)}</td><td>{formatMoney(credit.interest_due)}</td><td>{formatMoney(credit.total_due)}</td></tr>)}</tbody>
+                </table>
+              </div></>
             ) : (
               <>
                 <p className="source-statement-note">
@@ -431,6 +454,13 @@ export default function BusinessSourceDetailPage() {
                         </tr>
                       ))}
                     </tbody>
+                  </table>
+                </div>
+                <h3>Pledge Credit Activity</h3>
+                <div className="data-table-wrap">
+                  <table className="data-table source-statement-table">
+                    <thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead>
+                    <tbody>{accountLoading ? <tr><td colSpan={6} className="table-message">Loading Pledge Credit activity...</td></tr> : !account?.pledge_credit_statement.length ? <tr><td colSpan={6} className="table-message">No Pledge Credit activity.</td></tr> : account.pledge_credit_statement.map((entry, index) => <tr key={`${entry.reference}-${entry.description}-${index}`}><td>{formatDate(entry.date)}</td><td>{entry.reference}</td><td>{entry.description}</td><td>{Number(entry.debit) ? formatMoney(entry.debit) : "—"}</td><td>{Number(entry.credit) ? formatMoney(entry.credit) : "—"}</td><td>{formatMoney(entry.balance)}</td></tr>)}</tbody>
                   </table>
                 </div>
               </>

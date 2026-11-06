@@ -67,7 +67,17 @@ DJANGO_SECRET_KEY="replace-this-in-development"
 DJANGO_DEBUG="true"
 DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1"
 CORS_ALLOWED_ORIGINS="http://localhost:3000"
+# Add only the reverse proxy IPs/CIDRs that may supply client and location headers.
+AUTH_TRUSTED_PROXY_IPS=""
+# Optional when GeoLite2-City.mmdb is placed in backend/data or a system GeoIP folder.
+AUTH_GEOIP2_DATABASE=""
 ```
+
+Login Activity resolves locations from trusted Cloudflare/Vercel geolocation
+headers first, then from a local MaxMind GeoLite2 City database. For direct
+deployments, download `GeoLite2-City.mmdb` into `backend/data/`; for proxied
+deployments, configure `AUTH_TRUSTED_PROXY_IPS` so forwarded client IP and
+location headers are accepted only from your proxy.
 
 ## PostgreSQL
 

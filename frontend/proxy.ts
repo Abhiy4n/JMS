@@ -4,8 +4,11 @@ import type { NextRequest } from "next/server";
 const AUTH_COOKIE = "jms_authenticated";
 const PUBLIC_PATHS = new Set(["/login", "/signup"]);
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (pathname === "/api" || pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
   const isAuthenticated = request.cookies.get(AUTH_COOKIE)?.value === "1";
   const isPublic = PUBLIC_PATHS.has(pathname);
 
@@ -32,6 +35,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api(?:/|$)|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
