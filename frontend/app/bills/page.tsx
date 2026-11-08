@@ -2,9 +2,10 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Plus, RotateCcw, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
+import MobileFilterSheet from "@/components/MobileFilterSheet";
 import { useToast } from "@/components/toast/ToastProvider";
 import DatePicker from "@/components/date-picker/DatePicker";
 import Select from "@/components/select/Select";
@@ -54,6 +55,7 @@ function BillsList() {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -146,7 +148,7 @@ function BillsList() {
         </div>
       )}
 
-      <div className="table-toolbar bill-toolbar">
+      <div className="table-toolbar bill-toolbar desktop-only">
         <div className="table-title-group">
           <h2>All bills</h2>
           <span className="record-count">{bills.length}</span>
@@ -197,7 +199,48 @@ function BillsList() {
         </div>
       </div>
 
-      <div className="data-table-wrap">
+      <div className="mobile-listing-toolbar mobile-only mobile-flex">
+        <div className="mobile-listing-toolbar-row">
+          <h2 className="mobile-listing-title">All bills</h2>
+          <span className="record-count">{bills.length}</span>
+        </div>
+        <div className="mobile-listing-toolbar-row">
+          <label className="local-search bill-search">
+            <span className="search-glyph" aria-hidden="true">⌕</span>
+            <span className="sr-only">Search bills and customers</span>
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Bill number or customer..." />
+          </label>
+          <button type="button" className="button button-secondary button-small" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>
+            <SlidersHorizontal size={15} aria-hidden="true" />
+            Filters
+          </button>
+        </div>
+        {hasFilters && (
+          <div className="mobile-filter-chips">
+            {search.trim() && (
+              <span className="mobile-filter-chip">
+                Search: {search.trim()}
+                <button type="button" aria-label="Clear search" onClick={() => setSearch("")}><X size={12} aria-hidden="true" /></button>
+              </span>
+            )}
+            {status && (
+              <span className="mobile-filter-chip">
+                Status: {STATUS_LABELS[status]}
+                <button type="button" aria-label="Clear status filter" onClick={() => setStatus("")}><X size={12} aria-hidden="true" /></button>
+              </span>
+            )}
+            {(dateFrom || dateTo) && (
+              <span className="mobile-filter-chip">
+                Dates: {dateFrom || "…"} → {dateTo || "…"}
+                <button type="button" aria-label="Clear date filters" onClick={() => { setDateFrom(""); setDateTo(""); }}><X size={12} aria-hidden="true" /></button>
+              </span>
+            )}
+            <button type="button" className="button button-secondary button-small" onClick={clearFilters}>Clear all</button>
+          </div>
+        )}
+      </div>
+
+      <div className="data-table-wrap desktop-only">
         <table className="data-table bill-table">
           <thead>
             <tr>
@@ -272,6 +315,75 @@ function BillsList() {
           </tbody>
         </table>
       </div>
+
+      <div className="mobile-record-list mobile-only mobile-grid" aria-busy={loading}>
+        {loading ? (
+          <div className="mobile-record-status" role="status">Loading bills...</div>
+        ) : error ? (
+          <div className="mobile-record-status">Bills could not be loaded.</div>
+        ) : bills.length === 0 ? (
+          <div className="mobile-record-empty">
+            <strong>{hasFilters ? "No matching bills" : "No bills yet"}</strong>
+            <span>{hasFilters ? "Try adjusting or clearing the filters." : "Bills will appear here when they are available."}</span>
+          </div>
+        ) : bills.map((bill, index) => (
+          <article key={bill.id} className="mobile-record-card">
+            <div className="mobile-record-card-identity">
+              <span className="mobile-record-sn">SN {index + 1} · {bill.bill_number}</span>
+              <h3 className="mobile-record-name">{bill.customer_name}</h3>
+              <div className="mobile-record-meta">
+                <span className={`status-badge status-${bill.status.toLowerCase()}`}>{STATUS_LABELS[bill.status]}</span>
+                <span className="mobile-record-secondary tabular-nums">{formatMoney(bill.grand_total)}</span>
+              </div>
+            </div>
+            <div className="mobile-record-card-actions">
+              <Link className="button button-secondary button-small" href={`/bills/${bill.id}`}>View Details</Link>
+              {bill.status !== "CANCELLED" && (
+                <Link className="button button-secondary button-small" href={`/bills/new?edit=${bill.id}`}>Edit</Link>
+              )}
+              <button
+                className="button button-danger-outline button-small"
+                type="button"
+                disabled={deletingId === bill.id}
+                onClick={() => handleDelete(bill)}
+              >
+                {deletingId === bill.id ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {filtersOpen && (
+        <MobileFilterSheet
+          title="Bill filters"
+          onClose={() => setFiltersOpen(false)}
+          footer={
+            <>
+              <button type="button" className="button button-secondary" disabled={!hasFilters} onClick={() => { clearFilters(); }}>Reset</button>
+              <button type="button" className="button button-primary" onClick={() => setFiltersOpen(false)}>Apply</button>
+            </>
+          }
+        >
+          <div className="form-field">
+            <span id="mobile-bill-status-label">Status</span>
+            <Select
+              aria-labelledby="mobile-bill-status-label"
+              value={status}
+              options={[{ value: "", label: "All statuses" }, ...BILL_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))]}
+              onChange={setStatus}
+            />
+          </div>
+          <div className="form-field">
+            <span>From date</span>
+            <DatePicker aria-label="From date" value={dateFrom} max={dateTo || undefined} onChange={setDateFrom} />
+          </div>
+          <div className="form-field">
+            <span>To date</span>
+            <DatePicker aria-label="To date" value={dateTo} min={dateFrom || undefined} onChange={setDateTo} />
+          </div>
+        </MobileFilterSheet>
+      )}
     </>
   );
 }

@@ -2,10 +2,11 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Eye, Pencil, RotateCcw, Trash2, WalletCards } from "lucide-react";
+import { ExternalLink, Eye, Pencil, RotateCcw, SlidersHorizontal, Trash2, WalletCards, X } from "lucide-react";
 
 import CreditDetailsDialog from "@/components/CreditDetailsDialog";
 import DatePicker from "@/components/date-picker/DatePicker";
+import MobileFilterSheet from "@/components/MobileFilterSheet";
 import Select from "@/components/select/Select";
 import { useToast } from "@/components/toast/ToastProvider";
 import {
@@ -98,6 +99,7 @@ function FinancialRecords() {
   const [reloadKey, setReloadKey] = useState(0);
   const [filtersReloadKey, setFiltersReloadKey] = useState(0);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -328,7 +330,7 @@ function FinancialRecords() {
           </div>
         </div>
 
-        <div className="table-filters financial-record-filters">
+        <div className="table-filters financial-record-filters desktop-only">
           <label className="local-search financial-record-search">
             <span className="search-glyph" aria-hidden="true">⌕</span>
             <span className="sr-only">Search financial records</span>
@@ -375,7 +377,56 @@ function FinancialRecords() {
           </button>
         </div>
 
-        <div id="financial-records-table" className="data-table-wrap financial-records-table-wrap" role="tabpanel" aria-busy={recordsLoading}>
+        <div className="mobile-listing-toolbar mobile-only mobile-flex">
+          <div className="mobile-listing-toolbar-row">
+            <label className="local-search financial-record-search">
+              <span className="search-glyph" aria-hidden="true">⌕</span>
+              <span className="sr-only">Search financial records</span>
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Reference, customer, source..." />
+            </label>
+            <button type="button" className="button button-secondary button-small" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>
+              <SlidersHorizontal size={15} aria-hidden="true" />
+              Filters
+            </button>
+          </div>
+          {hasFilters && (
+            <div className="mobile-filter-chips">
+              {search.trim() && (
+                <span className="mobile-filter-chip">
+                  Search: {search.trim()}
+                  <button type="button" aria-label="Clear search" onClick={() => setSearch("")}><X size={12} aria-hidden="true" /></button>
+                </span>
+              )}
+              {status && (
+                <span className="mobile-filter-chip">
+                  Status: {STATUS_LABELS[status]}
+                  <button type="button" aria-label="Clear status filter" onClick={() => setStatus("")}><X size={12} aria-hidden="true" /></button>
+                </span>
+              )}
+              {businessSource && (
+                <span className="mobile-filter-chip">
+                  Source: {sources.find((entry) => String(entry.id) === businessSource)?.name || businessSource}
+                  <button type="button" aria-label="Clear source filter" onClick={() => { setBusinessSource(""); setCustomer(""); }}><X size={12} aria-hidden="true" /></button>
+                </span>
+              )}
+              {customer && (
+                <span className="mobile-filter-chip">
+                  Customer: {customers.find((entry) => String(entry.id) === customer)?.name || customer}
+                  <button type="button" aria-label="Clear customer filter" onClick={() => setCustomer("")}><X size={12} aria-hidden="true" /></button>
+                </span>
+              )}
+              {(dateFrom || dateTo) && (
+                <span className="mobile-filter-chip">
+                  Dates: {dateFrom || "…"} → {dateTo || "…"}
+                  <button type="button" aria-label="Clear date filters" onClick={() => { setDateFrom(""); setDateTo(""); }}><X size={12} aria-hidden="true" /></button>
+                </span>
+              )}
+              <button type="button" className="button button-secondary button-small" onClick={clearFilters}>Clear all</button>
+            </div>
+          )}
+        </div>
+
+        <div id="financial-records-table" className="data-table-wrap financial-records-table-wrap desktop-only" role="tabpanel" aria-busy={recordsLoading}>
           <table className="data-table financial-records-table">
             <thead>
               <tr>
@@ -467,7 +518,128 @@ function FinancialRecords() {
             </tbody>
           </table>
         </div>
+
+        <div className="mobile-record-list mobile-only mobile-grid" aria-busy={recordsLoading}>
+          {recordsLoading ? (
+            <div className="mobile-record-status" role="status">Loading financial records...</div>
+          ) : recordsError ? (
+            <div className="mobile-record-status">Financial records could not be loaded.</div>
+          ) : visibleRecordCount === 0 ? (
+            <div className="mobile-record-empty">
+              <strong>{emptyTitle}</strong>
+              <span>{emptyDescription}</span>
+            </div>
+          ) : visibleRecords.map((record, index) => {
+            if (record.kind === "PLEDGE") {
+              const credit = record.data;
+              const pledgeReference = credit.pledge_number || `Pledge #${credit.pledge}`;
+              const normalizedStatus = creditStatus(credit);
+              return (
+                <article key={`pledge-mobile-${credit.id}`} className="mobile-record-card">
+                  <div className="mobile-record-card-identity">
+                    <span className="mobile-record-sn">SN {index + 1} · {pledgeReference}</span>
+                    <h3 className="mobile-record-name">{credit.customer_name}</h3>
+                    <div className="mobile-record-meta">
+                      <span className="mobile-record-type">Pledge</span>
+                      <span className={`status-badge status-${normalizedStatus.toLowerCase()}`}>{STATUS_LABELS[normalizedStatus]}</span>
+                      <span className="mobile-record-secondary tabular-nums">{formatMoney(credit.calculation.total_due)}</span>
+                    </div>
+                  </div>
+                  <div className="mobile-record-card-actions">
+                    <button className="button button-secondary button-small" type="button" onClick={() => setSelectedCredit(credit)}>
+                      View Details
+                    </button>
+                    <Link className="button button-secondary button-small" href={`/pledges/${credit.pledge}/form`}>Open pledge</Link>
+                  </div>
+                </article>
+              );
+            }
+
+            const bill = record.data;
+            return (
+              <article key={`bill-mobile-${bill.id}`} className="mobile-record-card">
+                <div className="mobile-record-card-identity">
+                  <span className="mobile-record-sn">SN {index + 1} · {bill.bill_number}</span>
+                  <h3 className="mobile-record-name">{bill.customer_name}</h3>
+                  <div className="mobile-record-meta">
+                    <span className="mobile-record-type">Bill</span>
+                    <span className={`status-badge status-${bill.status.toLowerCase()}`}>{STATUS_LABELS[bill.status]}</span>
+                    <span className="mobile-record-secondary tabular-nums">{formatMoney(bill.status === "CANCELLED" ? 0 : bill.amount_due)}</span>
+                  </div>
+                </div>
+                <div className="mobile-record-card-actions">
+                  <Link className="button button-secondary button-small" href={`/bills/${bill.id}`}>View Details</Link>
+                  {bill.status !== "CANCELLED" && (
+                    <Link className="button button-secondary button-small" href={`/bills/new?edit=${bill.id}`}>Edit</Link>
+                  )}
+                  <button
+                    className="button button-danger-outline button-small"
+                    type="button"
+                    disabled={deletingId === bill.id}
+                    onClick={() => handleDelete(bill)}
+                  >
+                    {deletingId === bill.id ? "Deleting..." : "Delete"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       </section>
+
+      {filtersOpen && (
+        <MobileFilterSheet
+          title="Record filters"
+          onClose={() => setFiltersOpen(false)}
+          footer={
+            <>
+              <button type="button" className="button button-secondary" disabled={!hasFilters} onClick={clearFilters}>Reset</button>
+              <button type="button" className="button button-primary" onClick={() => setFiltersOpen(false)}>Apply</button>
+            </>
+          }
+        >
+          <div className="form-field">
+            <span id="mobile-financial-status-label">Payment status</span>
+            <Select
+              aria-labelledby="mobile-financial-status-label"
+              value={status}
+              options={[{ value: "", label: "All statuses" }, ...BILL_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))]}
+              onChange={setStatus}
+            />
+          </div>
+          <div className="form-field">
+            <span id="mobile-financial-source-label">Business source</span>
+            <Select
+              aria-labelledby="mobile-financial-source-label"
+              value={businessSource}
+              disabled={filtersLoading}
+              options={[{ value: "", label: "All business sources" }, ...sources.map((source) => ({ value: String(source.id), label: source.name }))]}
+              onChange={(value) => {
+                setBusinessSource(value);
+                setCustomer("");
+              }}
+            />
+          </div>
+          <div className="form-field">
+            <span id="mobile-financial-customer-label">Customer</span>
+            <Select
+              aria-labelledby="mobile-financial-customer-label"
+              value={customer}
+              disabled={filtersLoading}
+              options={[{ value: "", label: "All customers" }, ...visibleCustomers.map((entry) => ({ value: String(entry.id), label: entry.name }))]}
+              onChange={setCustomer}
+            />
+          </div>
+          <div className="form-field">
+            <span>From date</span>
+            <DatePicker aria-label="From date" value={dateFrom} max={dateTo || undefined} onChange={setDateFrom} />
+          </div>
+          <div className="form-field">
+            <span>To date</span>
+            <DatePicker aria-label="To date" value={dateTo} min={dateFrom || undefined} onChange={setDateTo} />
+          </div>
+        </MobileFilterSheet>
+      )}
 
       {selectedCredit && (
         <CreditDetailsDialog

@@ -2,11 +2,12 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { Eye, Plus, RotateCcw } from "lucide-react";
+import { Eye, Plus, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
 import DatePicker from "@/components/date-picker/DatePicker";
+import MobileFilterSheet from "@/components/MobileFilterSheet";
 import Select from "@/components/select/Select";
 import { useToast } from "@/components/toast/ToastProvider";
 import {
@@ -59,6 +60,7 @@ function PledgeRecords() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const dateRangeError = dateFrom && dateTo && dateFrom > dateTo
     ? "Pledge date to must be on or after pledge date from."
     : "";
@@ -137,7 +139,7 @@ function PledgeRecords() {
         </div>
       )}
 
-      <div className="table-toolbar pledge-toolbar">
+      <div className="table-toolbar pledge-toolbar desktop-only">
         <div className="table-title-group">
           <h2>All Pledge records</h2>
           {currentResult && !error && <span className="record-count">{pledges.length}</span>}
@@ -195,9 +197,51 @@ function PledgeRecords() {
           </button>
         </div>
       </div>
+
+      <div className="mobile-listing-toolbar mobile-only mobile-flex">
+        <div className="mobile-listing-toolbar-row">
+          <h2 className="mobile-listing-title">All Pledge records</h2>
+          {currentResult && !error && <span className="record-count">{pledges.length}</span>}
+        </div>
+        <div className="mobile-listing-toolbar-row">
+          <label className="local-search pledge-search">
+            <span className="search-glyph" aria-hidden="true">⌕</span>
+            <span className="sr-only">Search by Pledge number or customer</span>
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pledge number or customer..." />
+          </label>
+          <button type="button" className="button button-secondary button-small" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>
+            <SlidersHorizontal size={15} aria-hidden="true" />
+            Filters
+          </button>
+        </div>
+        {hasFilters && (
+          <div className="mobile-filter-chips">
+            {search.trim() && (
+              <span className="mobile-filter-chip">
+                Search: {search.trim()}
+                <button type="button" aria-label="Clear search" onClick={() => setSearch("")}><X size={12} aria-hidden="true" /></button>
+              </span>
+            )}
+            {status && (
+              <span className="mobile-filter-chip">
+                Status: {STATUS_LABELS[status]}
+                <button type="button" aria-label="Clear status filter" onClick={() => setStatus("")}><X size={12} aria-hidden="true" /></button>
+              </span>
+            )}
+            {(dateFrom || dateTo) && (
+              <span className="mobile-filter-chip">
+                Dates: {dateFrom || "…"} → {dateTo || "…"}
+                <button type="button" aria-label="Clear date filters" onClick={() => { setDateFrom(""); setDateTo(""); }}><X size={12} aria-hidden="true" /></button>
+              </span>
+            )}
+            <button type="button" className="button button-secondary button-small" onClick={clearFilters}>Clear all</button>
+          </div>
+        )}
+      </div>
+
       {dateRangeError && <p id="pledge-records-date-error" className="notice notice-error" role="alert">{dateRangeError}</p>}
 
-      <div className="data-table-wrap" aria-busy={loading}>
+      <div className="data-table-wrap desktop-only" aria-busy={loading}>
         <table className="data-table pledge-table">
           <thead>
             <tr>
@@ -267,6 +311,78 @@ function PledgeRecords() {
           </tbody>
         </table>
       </div>
+
+      <div className="mobile-record-list mobile-only mobile-grid" aria-busy={loading}>
+        {dateRangeError ? (
+          <div className="mobile-record-status">Choose a valid pledge date range to view records.</div>
+        ) : loading ? (
+          <div className="mobile-record-status" role="status">Loading Pledge records...</div>
+        ) : error ? (
+          <div className="mobile-record-status">Pledge records could not be loaded.</div>
+        ) : pledges.length === 0 ? (
+          <div className="mobile-record-empty">
+            <strong>{hasFilters ? "No matching Pledge records" : "No Pledge records yet"}</strong>
+            <span>{hasFilters ? "Try adjusting or clearing the filters." : "Customer pledge records will appear here after they are created."}</span>
+          </div>
+        ) : pledges.map((pledge, index) => (
+          <article key={pledge.id} className="mobile-record-card">
+            <div className="mobile-record-card-identity">
+              <span className="mobile-record-sn">SN {index + 1} · {pledge.pledge_number}</span>
+              <h3 className="mobile-record-name">{pledge.customer_name}</h3>
+              <div className="mobile-record-meta">
+                <span className={`status-badge status-${pledge.status.toLowerCase()}`}>{STATUS_LABELS[pledge.status]}</span>
+                <span className="mobile-record-secondary tabular-nums">{formatMoney(pledge.amount_received)}</span>
+                {pledge.is_overdue ? <span className="pledge-overdue-badge">Overdue</span> : null}
+              </div>
+            </div>
+            <div className="mobile-record-card-actions">
+              <Link className="button button-secondary button-small" href={`/pledges/${pledge.id}/form`}>
+                <Eye size={15} aria-hidden="true" /> View Details
+              </Link>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {filtersOpen && (
+        <MobileFilterSheet
+          title="Pledge filters"
+          onClose={() => setFiltersOpen(false)}
+          footer={
+            <>
+              <button type="button" className="button button-secondary" disabled={!hasFilters} onClick={clearFilters}>Reset</button>
+              <button type="button" className="button button-primary" onClick={() => setFiltersOpen(false)}>Apply</button>
+            </>
+          }
+        >
+          <div className="form-field">
+            <span id="mobile-pledge-status-label">Status</span>
+            <Select
+              aria-labelledby="mobile-pledge-status-label"
+              value={status}
+              options={[
+                { value: "", label: "All statuses" },
+                ...PLEDGE_STATUSES.map((pledgeStatus) => ({ value: pledgeStatus, label: STATUS_LABELS[pledgeStatus] })),
+              ]}
+              onChange={setStatus}
+            />
+          </div>
+          <div className="form-field">
+            <span>Pledge date from</span>
+            <DatePicker aria-label="Pledge date from" value={dateFrom} max={dateTo || undefined} onChange={setDateFrom} />
+          </div>
+          <div className="form-field">
+            <span>Pledge date to</span>
+            <DatePicker
+              aria-label="Pledge date to"
+              value={dateTo}
+              min={dateFrom || undefined}
+              aria-invalid={Boolean(dateRangeError)}
+              onChange={setDateTo}
+            />
+          </div>
+        </MobileFilterSheet>
+      )}
 
     </BusinessAppShell>
   );

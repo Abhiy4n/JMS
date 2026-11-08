@@ -415,7 +415,38 @@
   }
 
   .portfolio-kpis.business-source-kpis {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .portfolio-kpis.business-source-kpis > .metric-card:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .portfolio-kpis.business-source-kpis .metric-card {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .portfolio-kpis.business-source-kpis .metric-card > .metric-icon {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+    border-radius: 9px;
+  }
+
+  .portfolio-kpis.business-source-kpis .metric-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .portfolio-kpis.business-source-kpis .metric-card > div > strong {
+    font-size: 18px;
+  }
+
+  .portfolio-kpis.business-source-kpis .metric-card small {
+    display: none;
   }
 
   .business-source-editor {

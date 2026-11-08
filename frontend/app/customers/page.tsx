@@ -2,11 +2,14 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { SlidersHorizontal, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
 import CustomerDialog from "@/components/CustomerDialog";
+import MobileFilterSheet from "@/components/MobileFilterSheet";
 import Select from "@/components/select/Select";
 import {
+  CUSTOMER_TYPE_LABELS,
   type BusinessSource,
   type Customer,
   fetchBusinessSources,
@@ -31,6 +34,7 @@ function CustomersDirectory() {
   const [error, setError] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     fetchBusinessSources()
@@ -60,6 +64,16 @@ function CustomersDirectory() {
     return () => { current = false; };
   }, [search, sourceFilter, reloadKey]);
 
+  const hasFilters = Boolean(search.trim() || sourceFilter);
+  const selectedSourceName = sources.find((source) => String(source.id) === sourceFilter)?.name;
+  const sourceOptions = [{ value: "", label: "All sources" }, ...sources.map((source) => ({ value: String(source.id), label: source.name }))];
+
+  function clearFilters() {
+    setLoading(true);
+    setSearch("");
+    setSourceFilter("");
+  }
+
   return (
     <>
       <section className="page-heading">
@@ -81,7 +95,7 @@ function CustomersDirectory() {
         </p>
       )}
 
-      <div className="table-toolbar">
+      <div className="table-toolbar desktop-only">
         <div className="table-title-group">
           <h2>All customers</h2>
           <span className="record-count">{customers.length}</span>
@@ -103,7 +117,7 @@ function CustomersDirectory() {
             <Select
               aria-label="Filter by source"
               value={sourceFilter}
-              options={[{ value: "", label: "All sources" }, ...sources.map((source) => ({ value: String(source.id), label: source.name }))]}
+              options={sourceOptions}
               onChange={(value) => {
                 setLoading(true);
                 setSourceFilter(value);
@@ -113,8 +127,50 @@ function CustomersDirectory() {
         </div>
       </div>
 
+      <div className="mobile-listing-toolbar mobile-only mobile-flex">
+        <div className="mobile-listing-toolbar-row">
+          <h2 className="mobile-listing-title">All customers</h2>
+          <span className="record-count">{customers.length}</span>
+        </div>
+        <div className="mobile-listing-toolbar-row">
+          <label className="local-search">
+            <span className="search-glyph" aria-hidden="true">⌕</span>
+            <span className="sr-only">Search customers</span>
+            <input
+              value={search}
+              onChange={(event) => {
+                setLoading(true);
+                setSearch(event.target.value);
+              }}
+              placeholder="Name, phone, email..."
+            />
+          </label>
+          <button type="button" className="button button-secondary button-small" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}>
+            <SlidersHorizontal size={15} aria-hidden="true" />
+            Filters
+          </button>
+        </div>
+        {hasFilters && (
+          <div className="mobile-filter-chips">
+            {search.trim() && (
+              <span className="mobile-filter-chip">
+                Search: {search.trim()}
+                <button type="button" aria-label="Clear search" onClick={() => { setLoading(true); setSearch(""); }}><X size={12} aria-hidden="true" /></button>
+              </span>
+            )}
+            {sourceFilter && (
+              <span className="mobile-filter-chip">
+                Source: {selectedSourceName || sourceFilter}
+                <button type="button" aria-label="Clear source filter" onClick={() => { setLoading(true); setSourceFilter(""); }}><X size={12} aria-hidden="true" /></button>
+              </span>
+            )}
+            <button type="button" className="button button-secondary button-small" onClick={clearFilters}>Clear all</button>
+          </div>
+        )}
+      </div>
+
       {error && <p className="notice notice-error" role="alert">{error}</p>}
-      <div className="data-table-wrap">
+      <div className="data-table-wrap desktop-only">
         <table className="data-table customer-table">
           <thead>
             <tr>
@@ -147,6 +203,62 @@ function CustomersDirectory() {
           </tbody>
         </table>
       </div>
+
+      <div className="mobile-record-list mobile-only mobile-grid" aria-busy={loading}>
+        {loading ? (
+          <div className="mobile-record-status" role="status">Loading customers...</div>
+        ) : customers.length === 0 ? (
+          <div className="mobile-record-empty">
+            <strong>{hasFilters ? "No matching customers" : "No customers yet"}</strong>
+            <span>{hasFilters ? "Clear or change the filters to see more records." : "Customers added here also update their business source automatically."}</span>
+          </div>
+        ) : customers.map((customer, index) => (
+          <article key={customer.id} className="mobile-record-card">
+            <div className="mobile-record-card-identity">
+              <span className="mobile-record-sn">SN {index + 1}</span>
+              <h3 className="mobile-record-name">{customer.name}</h3>
+              <div className="mobile-record-meta">
+                <span className="mobile-record-type">{CUSTOMER_TYPE_LABELS[customer.customer_type]}</span>
+                <span className="mobile-record-secondary">{customer.phone || "No phone"}</span>
+              </div>
+              <span className="mobile-record-secondary">{customer.source_name || "No business source"}</span>
+            </div>
+            {customer.business_source ? (
+              <div className="mobile-record-card-actions">
+                <Link className="button button-secondary button-small" href={`/business-sources/${customer.business_source}`}>
+                  View source
+                </Link>
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      {filtersOpen && (
+        <MobileFilterSheet
+          title="Customer filters"
+          onClose={() => setFiltersOpen(false)}
+          footer={
+            <>
+              <button type="button" className="button button-secondary" disabled={!sourceFilter} onClick={() => setSourceFilter("")}>Reset</button>
+              <button type="button" className="button button-primary" onClick={() => setFiltersOpen(false)}>Apply</button>
+            </>
+          }
+        >
+          <div className="form-field">
+            <span id="mobile-customer-source-label">Business source</span>
+            <Select
+              aria-labelledby="mobile-customer-source-label"
+              value={sourceFilter}
+              options={sourceOptions}
+              onChange={(value) => {
+                setLoading(true);
+                setSourceFilter(value);
+              }}
+            />
+          </div>
+        </MobileFilterSheet>
+      )}
 
       {dialogOpen && (
         <CustomerDialog
