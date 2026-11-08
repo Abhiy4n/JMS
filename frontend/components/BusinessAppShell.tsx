@@ -10,7 +10,6 @@ import type { AuthUser } from "@/lib/auth/api";
 const primaryNavigation = [
   { label: "Customers", href: "/customers", icon: "♙" },
   { label: "Business Sources", href: "/dashboard", icon: "▤" },
-  { label: "Bills", href: "/bills", icon: "▧" },
 ];
 
 export default function BusinessAppShell({ children }: { children: ReactNode }) {
@@ -62,6 +61,8 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
   }
 
   const displayName = user?.name || "Your account";
+  const pledgeReportActive = pathname === "/pledges/report";
+  const pledgeRecordsActive = !pledgeReportActive && (pathname === "/pledges" || pathname.startsWith("/pledges/"));
 
   return (
     <div className="app-frame">
@@ -95,6 +96,57 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
               </Link>
             );
           })}
+          <div className="sidebar-section-label sidebar-transactions-label">TRANSACTIONS</div>
+          <div className="sidebar-group-label">Sales</div>
+          <div className="sidebar-subnavigation">
+            <Link
+              href="/bills"
+              onClick={() => setMenuOpen(false)}
+              className={`sidebar-link ${pathname === "/bills" || pathname.startsWith("/bills/") ? "sidebar-link-active" : ""}`}
+              aria-current={pathname === "/bills" || pathname.startsWith("/bills/") ? "page" : undefined}
+            >
+              <span className="nav-glyph" aria-hidden="true">▧</span>
+              <span>Bills</span>
+              {(pathname === "/bills" || pathname.startsWith("/bills/")) && (
+                <span className="active-dot" aria-hidden="true" />
+              )}
+            </Link>
+            <div className="sidebar-link sidebar-link-placeholder" aria-disabled="true">
+              <span className="nav-glyph" aria-hidden="true">▤</span>
+              <span>Invoices</span>
+              <span className="sidebar-coming-soon">Coming soon</span>
+            </div>
+          </div>
+          <div className="sidebar-group-label sidebar-group-spaced">Pledge Management</div>
+          <div className="sidebar-subnavigation">
+            <Link
+              href="/pledges"
+              onClick={() => setMenuOpen(false)}
+              className={`sidebar-link ${pledgeRecordsActive ? "sidebar-link-active" : ""}`}
+              aria-current={pledgeRecordsActive ? "page" : undefined}
+            >
+              <span className="nav-glyph" aria-hidden="true">◇</span>
+              <span>Pledge Records</span>
+              {pledgeRecordsActive && (
+                <span className="active-dot" aria-hidden="true" />
+              )}
+            </Link>
+            <Link
+              href="/pledges/report"
+              onClick={() => setMenuOpen(false)}
+              className={`sidebar-link ${pledgeReportActive ? "sidebar-link-active" : ""}`}
+              aria-current={pledgeReportActive ? "page" : undefined}
+            >
+              <span className="nav-glyph" aria-hidden="true">▤</span>
+              <span>Customer-wise Report</span>
+              {pledgeReportActive && <span className="active-dot" aria-hidden="true" />}
+            </Link>
+            <div className="sidebar-link sidebar-link-placeholder" aria-disabled="true">
+              <span className="nav-glyph" aria-hidden="true">▧</span>
+              <span>Official Forms</span>
+              <span className="sidebar-coming-soon">Coming soon</span>
+            </div>
+          </div>
         </nav>
 
         <div className="sidebar-section-label sidebar-lower-label">DOCUMENTS &amp; ANALYTICS</div>
