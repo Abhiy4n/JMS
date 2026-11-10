@@ -100,7 +100,7 @@ cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python manage.py migrate
-```
+````
 
 See [backend/README.md](backend/README.md) for more backend setup details.
 
