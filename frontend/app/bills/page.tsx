@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, RotateCcw, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { RotateCcw, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
 import MobileFilterSheet from "@/components/MobileFilterSheet";
@@ -127,10 +127,6 @@ function BillsList() {
           <h1>Bills</h1>
           <p className="page-description">Review bills, customer details, and outstanding balances.</p>
         </div>
-        <Link className="button button-primary" href="/bills/new">
-          <Plus size={16} aria-hidden="true" />
-          Create Bill
-        </Link>
       </section>
 
       {created && <p className="notice notice-success" role="status">Bill created successfully.</p>}
@@ -290,15 +286,6 @@ function BillsList() {
                     >
                       View
                     </Link>
-                    {bill.status !== "CANCELLED" && (
-                      <Link
-                        className="button button-secondary button-small"
-                        href={`/bills/new?edit=${bill.id}`}
-                        aria-label={`Edit bill ${bill.bill_number}`}
-                      >
-                        Edit
-                      </Link>
-                    )}
                     <button
                       className="button button-danger-outline button-small"
                       type="button"
@@ -338,9 +325,6 @@ function BillsList() {
             </div>
             <div className="mobile-record-card-actions">
               <Link className="button button-secondary button-small" href={`/bills/${bill.id}`}>View Details</Link>
-              {bill.status !== "CANCELLED" && (
-                <Link className="button button-secondary button-small" href={`/bills/new?edit=${bill.id}`}>Edit</Link>
-              )}
               <button
                 className="button button-danger-outline button-small"
                 type="button"

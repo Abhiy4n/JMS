@@ -1,4 +1,5 @@
 from decimal import Decimal
+from uuid import uuid4
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
@@ -7,9 +8,19 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.validators import UniqueValidator
 
-from .models import BusinessSource, Customer, LoginEvent, Role, User, UserSession
+from .models import (
+    BUSINESS_SOURCE_TERM_PRESETS,
+    BusinessSource,
+    BusinessSourceTermEditLog,
+    Customer,
+    LoginEvent,
+    Role,
+    User,
+    UserSession,
+)
 
 
 ALLOWED_EMAIL_SUFFIXES = {
@@ -205,6 +216,16 @@ class NewBusinessSourceCategorySerializer(serializers.Serializer):
     address = serializers.CharField(required=False, allow_blank=True)
     monthly_interest_amount = serializers.DecimalField(max_digits=14, decimal_places=2, required=False)
     interest_credit_basis = serializers.DecimalField(max_digits=14, decimal_places=2, required=False)
+    upfront_percent = serializers.DecimalField(
+        max_digits=5, decimal_places=2, min_value=Decimal("0.00"),
+        max_value=Decimal("100.00"), required=False, allow_null=True,
+    )
+    upfront_days = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    daily_percent = serializers.DecimalField(
+        max_digits=5, decimal_places=2, min_value=Decimal("0.00"),
+        max_value=Decimal("100.00"), required=False, allow_null=True,
+    )
+    daily_divisor = serializers.IntegerField(min_value=1, required=False, allow_null=True)
 
     def validate(self, attrs):
         # Legacy inline creation follows exactly the same identity rules.
@@ -354,13 +375,32 @@ class InitialCustomerSerializer(serializers.Serializer):
         return validate_customer_email(value)
 
 
+class BusinessSourceTermEditLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessSourceTermEditLog
+        fields = ("id", "edit_id", "field", "old_value", "new_value", "changed_by", "changed_at", "reason")
+        read_only_fields = fields
+
+
 class BusinessSourceSerializer(serializers.ModelSerializer):
     name = serializers.CharField(max_length=255, validators=[UniqueValidator(
         queryset=BusinessSource.objects.all(), lookup="iexact",
         message="A business source with this name already exists.",
     )])
     customer_count = serializers.SerializerMethodField()
+    term_edit_log = BusinessSourceTermEditLogSerializer(source="term_edit_logs", many=True, read_only=True)
     first_customer = InitialCustomerSerializer(write_only=True, required=False)
+    reason = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=500)
+    upfront_percent = serializers.DecimalField(
+        max_digits=5, decimal_places=2, min_value=Decimal("0.00"),
+        max_value=Decimal("100.00"), required=False, allow_null=True,
+    )
+    upfront_days = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    daily_percent = serializers.DecimalField(
+        max_digits=5, decimal_places=2, min_value=Decimal("0.00"),
+        max_value=Decimal("100.00"), required=False, allow_null=True,
+    )
+    daily_divisor = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     monthly_interest_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.00"), required=False, allow_null=True)
     interest_credit_basis = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"), required=False, allow_null=True)
     interest_type = serializers.ChoiceField(choices=BusinessSource.InterestType.choices, required=False, allow_null=True)
@@ -383,13 +423,19 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
             "interest_percentage",
             "interest_amount",
             "days",
+            "upfront_percent",
+            "upfront_days",
+            "daily_percent",
+            "daily_divisor",
             "monthly_interest_amount",
             "interest_credit_basis",
             "channel_type",
             "status",
             "description",
             "customer_count",
+            "term_edit_log",
             "first_customer",
+            "reason",
             "created_at",
             "updated_at",
         )
@@ -399,6 +445,16 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
         if hasattr(obj, "customer_count"):
             return obj.customer_count
         return obj.customers.count()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        terms = instance.pledge_terms()
+        if terms:
+            data.update(zip(
+                ("upfront_percent", "upfront_days", "daily_percent", "daily_divisor"),
+                (str(terms[0]), terms[1], str(terms[2]), terms[3]),
+            ))
+        return data
 
     def validate_phone(self, value):
         return validate_customer_phone(value)
@@ -412,6 +468,9 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
 
         kind = current("source_type", BusinessSource.Type.INDIVIDUAL)
         errors = {}
+        request = self.context.get("request")
+        if self.instance is None and request is not None and not request.user.is_superuser:
+            raise PermissionDenied("Only superusers can create Business Sources.")
         legacy_create = self.context.get("legacy_customer_source") or (
             self.instance is None and "first_customer" in attrs
         )
@@ -436,70 +495,48 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
             elif source_type_changed:
                 attrs["pan_vat_number"] = ""
 
+        term_fields = ("upfront_percent", "upfront_days", "daily_percent", "daily_divisor")
+        preset = BUSINESS_SOURCE_TERM_PRESETS.get(kind)
+        if preset:
+            for field, expected in zip(term_fields, preset):
+                if field in attrs and attrs[field] not in (None, expected):
+                    errors[field] = "This source type uses its fixed pledge interest preset."
+                attrs.pop(field, None)
+            if source_type_changed or self.instance is None:
+                attrs.update(dict.fromkeys(term_fields, None))
+        else:
+            for field in term_fields:
+                if current(field, None) is None:
+                    errors[field] = f"{field.replace('_', ' ').capitalize()} is required for a Dynamic source."
+
+        if self.instance is not None:
+            old_terms = self.instance.pledge_terms()
+            new_terms = preset or tuple(current(field, None) for field in term_fields)
+            if old_terms != new_terms:
+                reason = attrs.get("reason", "").strip()
+                if len(reason) < 5:
+                    errors["reason"] = "A reason of at least 5 characters is required when changing pledge terms."
+                attrs["reason"] = reason
+
         config_fields = ("interest_type", "interest_percentage", "interest_amount", "days")
         config_was_submitted = any(field in attrs for field in config_fields)
-        legacy_customer_source = self.context.get("legacy_customer_source")
-        if kind == BusinessSource.Type.DYNAMIC and legacy_customer_source:
-            for field in ("monthly_interest_amount", "interest_credit_basis"):
-                if current(field, None) is None:
-                    errors[field] = "Required for Dynamic credit terms."
-        elif not legacy_customer_source and (
-            self.instance is None or source_type_changed or config_was_submitted
-        ):
-            if kind in (BusinessSource.Type.INDIVIDUAL, BusinessSource.Type.COMPANY) and self.instance is None and not config_was_submitted:
-                attrs.update(
-                    interest_type=BusinessSource.InterestType.PERCENTAGE,
-                    interest_percentage=Decimal("2.0000"),
-                    interest_amount=None,
-                    days=15 if kind == BusinessSource.Type.COMPANY else 30,
-                )
-            elif kind in (BusinessSource.Type.INDIVIDUAL, BusinessSource.Type.COMPANY) and source_type_changed:
+        if kind in (BusinessSource.Type.INDIVIDUAL, BusinessSource.Type.COMPANY):
+            if self.instance is None or source_type_changed:
                 attrs.setdefault("interest_type", BusinessSource.InterestType.PERCENTAGE)
                 attrs.setdefault("interest_percentage", Decimal("2.0000"))
                 attrs.setdefault("interest_amount", None)
                 attrs.setdefault("days", 15 if kind == BusinessSource.Type.COMPANY else 30)
-
+        if config_was_submitted:
             interest_type = current("interest_type", None)
             percentage = current("interest_percentage", None)
             amount = current("interest_amount", None)
             days = current("days", None)
-
-            if kind == BusinessSource.Type.INDIVIDUAL:
-                if interest_type != BusinessSource.InterestType.PERCENTAGE:
-                    errors["interest_type"] = "Individual sources use percentage interest."
-                if percentage is None:
-                    errors["interest_percentage"] = "Interest % is required for an Individual source."
-                if amount is not None:
-                    errors["interest_amount"] = "Interest Amount is not used for an Individual source."
-                if days != 30:
-                    errors["days"] = "Individual sources use a 30-day period."
-            elif kind == BusinessSource.Type.COMPANY:
-                if interest_type != BusinessSource.InterestType.PERCENTAGE:
-                    errors["interest_type"] = "Company sources use percentage interest."
-                if percentage is None:
-                    errors["interest_percentage"] = "Interest % is required for a Company source."
-                if amount is not None:
-                    errors["interest_amount"] = "Interest Amount is not used for a Company source."
-                if days != 15:
-                    errors["days"] = "Company sources use a 15-day period."
-            elif interest_type is None:
-                errors["interest_type"] = "Choose Percentage or Fixed Amount."
-            elif interest_type == BusinessSource.InterestType.PERCENTAGE:
-                if percentage is None:
-                    errors["interest_percentage"] = "Interest % is required for Percentage."
-                if amount is not None:
-                    errors["interest_amount"] = "Interest Amount is not used for Percentage."
-            elif interest_type == BusinessSource.InterestType.FIXED_AMOUNT:
-                if amount is None:
-                    errors["interest_amount"] = "Interest Amount is required for Fixed Amount."
-                if percentage is not None:
-                    errors["interest_percentage"] = "Interest % is not used for Fixed Amount."
+            if interest_type == BusinessSource.InterestType.PERCENTAGE and (percentage is None or amount is not None):
+                errors["interest_percentage"] = "Provide a percentage and no fixed amount."
+            elif interest_type == BusinessSource.InterestType.FIXED_AMOUNT and (amount is None or percentage is not None):
+                errors["interest_amount"] = "Provide a fixed amount and no percentage."
             if days is None:
                 errors["days"] = "Days must be a positive whole number."
-
-        if not legacy_customer_source and (source_type_changed or config_was_submitted):
-            attrs["monthly_interest_amount"] = None
-            attrs["interest_credit_basis"] = None
 
         if errors:
             raise serializers.ValidationError(errors)
@@ -508,6 +545,7 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         initial_customer = validated_data.pop("first_customer", None)
+        validated_data.pop("reason", None)
         source = BusinessSource.objects.create(**validated_data)
         from .source_customers import sync_source_customer
         sync_source_customer(source)
@@ -519,7 +557,24 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def update(self, instance, validated_data):
         validated_data.pop("first_customer", None)
+        reason = validated_data.pop("reason", "").strip()
+        old_terms = instance.pledge_terms()
         source = super().update(instance, validated_data)
+        new_terms = source.pledge_terms()
+        if old_terms != new_terms:
+            edit_id = uuid4()
+            fields = ("upfront_percent", "upfront_days", "daily_percent", "daily_divisor")
+            for field, old_value, new_value in zip(fields, old_terms or (None,) * 4, new_terms or (None,) * 4):
+                if old_value != new_value:
+                    BusinessSourceTermEditLog.objects.create(
+                        source=source,
+                        edit_id=edit_id,
+                        field=field,
+                        old_value=str(old_value),
+                        new_value=str(new_value),
+                        changed_by=self.context["request"].user,
+                        reason=reason,
+                    )
         from .source_customers import sync_source_customer
         sync_source_customer(source)
         # Annotated counts may predate creation of the directory entry.

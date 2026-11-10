@@ -197,8 +197,13 @@ class BusinessSourceListCreateView(generics.ListCreateAPIView):
     serializer_class = BusinessSourceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [permissions.IsAuthenticated(), IsBusinessSourceManager()]
+        return [permissions.IsAuthenticated()]
+
     def get_queryset(self):
-        queryset = BusinessSource.objects.annotate(customer_count=Count("customers"))
+        queryset = BusinessSource.objects.annotate(customer_count=Count("customers")).prefetch_related("term_edit_logs")
         search = self.request.query_params.get("search", "").strip()
         if search:
             queryset = queryset.filter(name__icontains=search)
@@ -238,18 +243,35 @@ class BusinessSourceSummaryView(APIView):
 
 
 class BusinessSourceDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = BusinessSource.objects.annotate(customer_count=Count("customers"))
+    queryset = BusinessSource.objects.annotate(customer_count=Count("customers")).prefetch_related("term_edit_logs")
     serializer_class = BusinessSourceSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAuthenticated(), IsBusinessSourceManager()]
 
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         source = self.get_object()
+        if source.pledges.exists():
+            return Response(
+                {"detail": "A Business Source linked to pledges cannot be deleted. Deactivate it instead."},
+                status=status.HTTP_409_CONFLICT,
+            )
         try:
             source.delete()
         except ProtectedError:
             return Response({"detail": "This business source is assigned to customers. Reassign or unlink those customers before deleting it."}, status=status.HTTP_409_CONFLICT)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class IsBusinessSourceManager(permissions.BasePermission):
+    message = "Only superusers can create, edit, deactivate, or delete Business Sources."
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
 
 
 class CustomerListCreateView(generics.ListCreateAPIView):

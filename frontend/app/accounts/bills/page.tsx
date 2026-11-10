@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Eye, Pencil, RotateCcw, SlidersHorizontal, Trash2, WalletCards, X } from "lucide-react";
+import { ExternalLink, Eye, RotateCcw, SlidersHorizontal, Trash2, WalletCards, X } from "lucide-react";
 
 import CreditDetailsDialog from "@/components/CreditDetailsDialog";
 import DatePicker from "@/components/date-picker/DatePicker";
@@ -495,11 +495,6 @@ function FinancialRecords() {
                         <Link className="icon-button financial-action" href={`/bills/${bill.id}`} aria-label={`View bill ${bill.bill_number}`} title="View bill">
                           <Eye size={17} aria-hidden="true" />
                         </Link>
-                        {bill.status !== "CANCELLED" && (
-                          <Link className="icon-button financial-action" href={`/bills/new?edit=${bill.id}`} aria-label={`Edit bill ${bill.bill_number}`} title="Edit bill">
-                            <Pencil size={16} aria-hidden="true" />
-                          </Link>
-                        )}
                         <button
                           className="icon-button financial-action financial-action-danger"
                           type="button"
@@ -569,9 +564,6 @@ function FinancialRecords() {
                 </div>
                 <div className="mobile-record-card-actions">
                   <Link className="button button-secondary button-small" href={`/bills/${bill.id}`}>View Details</Link>
-                  {bill.status !== "CANCELLED" && (
-                    <Link className="button button-secondary button-small" href={`/bills/new?edit=${bill.id}`}>Edit</Link>
-                  )}
                   <button
                     className="button button-danger-outline button-small"
                     type="button"

@@ -129,21 +129,6 @@ export type CustomerDetails = {
   email: string;
 };
 
-export type NewSourceCategory = {
-  name: string;
-  channel_type: ChannelType;
-  description: string;
-};
-
-// Customers can link to an existing source or create a legacy source inline.
-export type NewCustomer = CustomerDetails & {
-  customer_type?: CustomerType;
-  monthly_interest_amount?: string;
-  interest_credit_basis?: string;
-  business_source?: number | null;
-  new_business_source?: NewSourceCategory;
-};
-
 export function fetchCustomers(
   search = "",
   customerTypeOrSource?: CustomerType | number,
@@ -167,13 +152,6 @@ export function fetchCustomers(
   );
 }
 
-export function createCustomer(payload: NewCustomer) {
-  return apiRequest<Customer>(
-    "/api/customers/",
-    { method: "POST", body: JSON.stringify(payload) },
-    getAccessToken()
-  );
-}
 export function fetchCustomer(id: number) {
   return apiRequest<Customer>(`/api/customers/${id}/`, {}, getAccessToken());
 }
@@ -214,7 +192,13 @@ export function deleteBusinessSource(id: number) {
 export function linkCustomerToSource(customerId: number, sourceId: number) {
   return apiRequest<Customer>(`/api/customers/${customerId}/`, { method: "PATCH", body: JSON.stringify({ business_source: sourceId }) }, getAccessToken());
 }
-export function updateCustomer(id: number, payload: Partial<NewCustomer> & { is_active?: boolean }) {
+export function updateCustomer(id: number, payload: Partial<CustomerDetails & {
+  customer_type: CustomerType;
+  monthly_interest_amount: string;
+  interest_credit_basis: string;
+  business_source: number | null;
+  is_active: boolean;
+}>) {
   return apiRequest<Customer>(`/api/customers/${id}/`, { method: "PATCH", body: JSON.stringify(payload) }, getAccessToken());
 }
 export function deleteCustomer(id: number) {

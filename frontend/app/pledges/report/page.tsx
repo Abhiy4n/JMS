@@ -6,17 +6,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
-import DatePicker from "@/components/date-picker/DatePicker";
 import Select from "@/components/select/Select";
 import { fetchPledges, PLEDGE_STATUSES, type Pledge, type PledgeStatus } from "@/lib/pledge-data";
-import { filterRegisterPledges, formatRecordedAmount, groupPledgesByCustomer, summarizePledges } from "@/lib/pledge-report";
+import { filterRegisterPledges, formatPledgePrincipal, groupPledgesByCustomer, summarizePledges } from "@/lib/pledge-report";
 import { userFacingError } from "@/lib/user-facing-error";
 import styles from "./pledge-register.module.css";
 
 const STATUS_LABELS: Record<PledgeStatus, string> = {
   ACTIVE: "Active",
-  REDEEMED: "Redeemed",
-  CANCELLED: "Cancelled",
+  CLOSED: "Closed",
+  FORFEITED: "Forfeited",
 };
 
 type ReportResult = {
@@ -26,10 +25,7 @@ type ReportResult = {
 };
 
 function formatDate(value: string | null) {
-  if (!value) return "—";
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+  return value || "—";
 }
 
 export default function PledgeReportPage() {
@@ -95,10 +91,9 @@ function CustomerPledgeRegister() {
   const summaryCards = summary ? [
     { label: "Matching pledges", value: summary.matching },
     { label: "Active", value: summary.active },
-    { label: "Redeemed", value: summary.redeemed },
-    { label: "Cancelled", value: summary.cancelled },
-    { label: "Overdue", value: summary.overdue },
-    { label: "Sum of recorded amounts received", value: formatRecordedAmount(summary.amountReceivedSum) },
+    { label: "Closed", value: summary.closed },
+    { label: "Forfeited", value: summary.forfeited },
+    { label: "Total principal", value: formatPledgePrincipal(summary.principalAmountSum) },
   ] : [];
 
   function updateFilter(name: string, value: string) {
@@ -138,19 +133,18 @@ function CustomerPledgeRegister() {
             <input id="pledge-report-item" type="search" placeholder="Saved item description" value={itemSearch} onChange={(event) => updateFilter("item_search", event.target.value)} />
           </label>
           <div className="form-field">
-            <span id="pledge-report-from-label">Pledge date from</span>
-            <DatePicker id="pledge-report-from" aria-labelledby="pledge-report-from-label" value={dateFrom} max={dateTo || undefined} onChange={(value) => updateFilter("date_from", value)} />
+            <label htmlFor="pledge-report-from">Pledge date from (BS)</label>
+            <input id="pledge-report-from" placeholder="YYYY-MM-DD" value={dateFrom} onChange={(event) => updateFilter("date_from", event.target.value)} />
           </div>
           <div className="form-field">
-            <span id="pledge-report-to-label">Pledge date to</span>
-            <DatePicker
+            <label htmlFor="pledge-report-to">Pledge date to (BS)</label>
+            <input
               id="pledge-report-to"
-              aria-labelledby="pledge-report-to-label"
+              placeholder="YYYY-MM-DD"
               value={dateTo}
-              min={dateFrom || undefined}
               aria-invalid={Boolean(dateRangeError)}
               aria-describedby={dateRangeError ? "pledge-report-date-error" : undefined}
-              onChange={(value) => updateFilter("date_to", value)}
+              onChange={(event) => updateFilter("date_to", event.target.value)}
             />
           </div>
           <div className="form-field">
@@ -185,7 +179,7 @@ function CustomerPledgeRegister() {
         {summary && (
           <section className="pledge-report-summary" aria-labelledby="pledge-report-summary-heading">
             <h2 id="pledge-report-summary-heading">Summary for matching pledges</h2>
-            <p className="page-description">The amount sum adds the saved Amount Received values for all matching pledges, including matching Redeemed and Cancelled records.</p>
+            <p className="page-description">Total principal is the sum of the original principal amounts for matching pledges.</p>
             <div className="pledge-report-cards">
               {summaryCards.map(({ label, value }) => (
                 <article className="source-account-card" key={label} aria-label={label}>
@@ -231,12 +225,11 @@ function CustomerPledgeRegister() {
                           <div className={styles.pledgeHeading}>
                             <h3 id={`register-pledge-${pledge.id}`}>{pledge.pledge_number}</h3>
                             <span className={`status-badge status-${pledge.status.toLowerCase()}`}>{STATUS_LABELS[pledge.status]}</span>
-                            {pledge.is_overdue && <span className="pledge-overdue-badge">Overdue</span>}
                           </div>
                           <dl className={styles.facts}>
                             <div><dt>Pledge date</dt><dd>{formatDate(pledge.pledge_date)}</dd></div>
-                            <div><dt>Amount received</dt><dd>{formatRecordedAmount(pledge.amount_received)}</dd></div>
-                            <div><dt>Due date</dt><dd>{formatDate(pledge.due_date)}</dd></div>
+                            <div><dt>Principal</dt><dd>{formatPledgePrincipal(pledge.principal_amount)}</dd></div>
+                            <div><dt>Due date (informational)</dt><dd>{formatDate(pledge.due_date)}</dd></div>
                             <div><dt>Business source</dt><dd>{pledge.business_source_name || "—"}</dd></div>
                           </dl>
                           <div className={styles.itemsAndAction}>
@@ -246,8 +239,8 @@ function CustomerPledgeRegister() {
                                 <ul>
                                   {[...pledge.items].sort((a, b) => a.sequence - b.sequence).map((item) => (
                                     <li key={item.id}>
-                                      <span>{item.description}</span>
-                                      <span className={styles.itemMeasures}>{item.weight_grams} g · Quantity: {item.quantity}</span>
+                                      <span>{item.particulars}</span>
+                                      <span className={styles.itemMeasures}>{item.weight} {item.unit} · Jor: {item.jor}</span>
                                     </li>
                                   ))}
                                 </ul>

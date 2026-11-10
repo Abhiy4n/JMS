@@ -1,17 +1,39 @@
 import { apiRequest } from "@/lib/auth/api";
 import { getAccessToken } from "@/lib/auth/storage";
-import type { CreditCalculation } from "@/lib/bill-data";
 
-export const PLEDGE_STATUSES = ["ACTIVE", "REDEEMED", "CANCELLED"] as const;
-
+export const PLEDGE_STATUSES = ["ACTIVE", "CLOSED", "FORFEITED"] as const;
 export type PledgeStatus = (typeof PLEDGE_STATUSES)[number];
+export type PledgeItemUnit = "TOLA" | "LAAL" | "GRAM";
 
 export type PledgeItem = {
   id: number;
   sequence: number;
-  description: string;
-  weight_grams: string;
-  quantity: number;
+  particulars: string;
+  weight: string;
+  unit: PledgeItemUnit;
+  ghat: string;
+  jor: string;
+};
+
+export type PledgePayment = {
+  id: number;
+  payment_date: string;
+  interest_amount: string;
+  principal_amount: string;
+  total_amount: string;
+  is_voided: boolean;
+};
+
+export type PledgeCalculation = {
+  day_number: number;
+  upfront_interest: string;
+  daily_interest: string;
+  daily_amount: string;
+  interest_earned: string;
+  interest_paid: string;
+  unpaid_interest: string;
+  outstanding_principal: string;
+  total_outstanding: string;
 };
 
 export type Pledge = {
@@ -22,16 +44,19 @@ export type Pledge = {
   business_source_id: number;
   business_source_name: string;
   pledge_date: string;
-  amount_received: string;
   due_date: string | null;
+  written_text: string;
+  address: string;
+  phone: string;
+  principal_amount: string;
+  upfront_percent: string;
+  upfront_days: number;
+  daily_percent: string;
+  daily_divisor: number;
   status: PledgeStatus;
-  is_overdue: boolean;
-  elapsed_days: number;
-  credit_id: number | null;
-  credit_calculation: CreditCalculation | null;
-  financial_status: "NOT_LINKED" | "UNPAID" | "PARTIALLY_PAID" | "PAID";
-  redeemed_date: string | null;
-  cancelled_date: string | null;
+  status_label: string;
+  calculation: PledgeCalculation;
+  payments: PledgePayment[];
   items: PledgeItem[];
   created_at: string;
   updated_at: string;
@@ -39,6 +64,7 @@ export type Pledge = {
 
 export type PledgeFilters = {
   search?: string;
+  business_source?: string;
   status?: PledgeStatus;
   pledge_date?: string;
   date_from?: string;
@@ -46,17 +72,33 @@ export type PledgeFilters = {
 };
 
 export type NewPledgeItem = {
-  description: string;
-  weight_grams: string;
-  quantity: number;
+  particulars: string;
+  weight: string;
+  unit: PledgeItemUnit;
+  ghat: string;
+  jor: string;
 };
 
 export type NewPledge = {
   customer: number;
+  business_source_id: number;
+  customer_name: string;
+  address: string;
+  phone: string;
+  written_text: string;
   pledge_date: string;
-  amount_received: string;
   due_date: string | null;
+  principal_amount: string;
   items: NewPledgeItem[];
+  reason?: string;
+};
+
+export type PledgeFormDefaults = { today_bs: string };
+export type PledgeCalendarMonth = {
+  year: number;
+  month: number;
+  first_weekday: number;
+  days: number[];
 };
 
 export function fetchPledges(filters: PledgeFilters = {}) {
@@ -81,6 +123,23 @@ export function getPledge(id: number) {
   );
 }
 
+export function fetchPledgeFormDefaults() {
+  return apiRequest<PledgeFormDefaults>(
+    "/api/pledges/form-defaults/",
+    {},
+    getAccessToken()
+  );
+}
+
+export function fetchPledgeCalendar(year: number, month: number) {
+  const query = new URLSearchParams({ year: String(year), month: String(month) });
+  return apiRequest<PledgeCalendarMonth>(
+    `/api/pledges/calendar/?${query.toString()}`,
+    {},
+    getAccessToken()
+  );
+}
+
 export function createPledge(payload: NewPledge) {
   return apiRequest<Pledge>(
     "/api/pledges/",
@@ -97,10 +156,10 @@ export function updatePledge(id: number, payload: NewPledge) {
   );
 }
 
-export function closePledge(id: number, status: Exclude<PledgeStatus, "ACTIVE">) {
+export function closePledge(id: number) {
   return apiRequest<Pledge>(
-    `/api/pledges/${id}/`,
-    { method: "PATCH", body: JSON.stringify({ status }) },
+    `/api/pledges/${id}/status/`,
+    { method: "POST", body: JSON.stringify({ status: "CLOSED" }) },
     getAccessToken()
   );
 }

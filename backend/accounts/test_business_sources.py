@@ -11,6 +11,10 @@ from .models import BusinessSource, Customer, User
 class BusinessSourceIdentityTests(APITestCase):
     def setUp(self):
         user = User.objects.create_user(email="source-tests@example.com", name="Source tester", password="test-password-123")
+        user.is_staff = True
+        user.is_superuser = True
+        user.save(update_fields=("is_staff", "is_superuser"))
+        self.user = user
         self.client.force_authenticate(user)
 
     def create_source(self, **overrides):
@@ -22,6 +26,11 @@ class BusinessSourceIdentityTests(APITestCase):
             "address": "Kathmandu",
         }
         payload.update(overrides)
+        if payload["source_type"] == "DYNAMIC":
+            payload.setdefault("upfront_percent", "2.00")
+            payload.setdefault("upfront_days", 30)
+            payload.setdefault("daily_percent", "2.00")
+            payload.setdefault("daily_divisor", 30)
         if payload["source_type"] == "COMPANY":
             payload.setdefault("interest_type", "PERCENTAGE")
             payload.setdefault("interest_percentage", "2.0000")
@@ -70,18 +79,18 @@ class BusinessSourceIdentityTests(APITestCase):
         self.assertEqual(default_terms.data["interest_percentage"], "2.0000")
         self.assertEqual(default_terms.data["days"], 15)
 
-    def test_individual_percentage_is_configurable_but_period_is_thirty_days(self):
+    def test_individual_pledge_terms_are_fixed_presets(self):
         configured = self.create_source(
             name="Configured individual", interest_type="PERCENTAGE",
             interest_percentage="3.1250", days=30,
         )
         self.assertEqual(configured.status_code, 201, configured.data)
-        self.assertEqual(configured.data["interest_percentage"], "3.1250")
-        invalid_period = self.create_source(
-            name="Wrong individual period", interest_type="PERCENTAGE",
-            interest_percentage="3.1250", days=29,
-        )
-        self.assertEqual(invalid_period.status_code, 400)
+        self.assertEqual(configured.data["upfront_percent"], "2.00")
+        self.assertEqual(configured.data["upfront_days"], 30)
+        self.assertEqual(configured.data["daily_percent"], "2.00")
+        self.assertEqual(configured.data["daily_divisor"], 30)
+        invalid_preset = self.create_source(name="Wrong preset", upfront_percent="3.00")
+        self.assertEqual(invalid_preset.status_code, 400)
 
     def test_dynamic_requires_phone_interest_choice_and_positive_days(self):
         missing_phone = self.create_source(
@@ -93,7 +102,12 @@ class BusinessSourceIdentityTests(APITestCase):
             days=15,
         )
         self.assertEqual(missing_phone.status_code, 400)
-        missing_configuration = self.create_source(source_type="DYNAMIC")
+        missing_configuration = self.client.post(reverse("business-source-list"), {
+            "name": "Missing dynamic terms",
+            "source_type": "DYNAMIC",
+            "phone": "9800000000",
+            "address": "Kathmandu",
+        }, format="json")
         self.assertEqual(missing_configuration.status_code, 400)
 
         percentage = self.create_source(
@@ -140,6 +154,44 @@ class BusinessSourceIdentityTests(APITestCase):
                 response = self.create_source(name=f"Invalid dynamic {index}", **data)
                 self.assertEqual(response.status_code, 400, response.data)
 
+    def test_dynamic_requires_all_pledge_terms_and_allows_zero_percent(self):
+        created = self.create_source(
+            name="Zero dynamic",
+            source_type="DYNAMIC",
+            upfront_percent="0.00",
+            upfront_days=0,
+            daily_percent="0.00",
+            daily_divisor=1,
+        )
+        self.assertEqual(created.status_code, 201, created.data)
+        source = BusinessSource.objects.get(pk=created.data["id"])
+        self.assertEqual(source.pledge_terms(), (Decimal("0.00"), 0, Decimal("0.00"), 1))
+        invalid = self.create_source(
+            name="Bad dynamic divisor",
+            source_type="DYNAMIC",
+            upfront_percent="1.00",
+            upfront_days=1,
+            daily_percent="1.00",
+            daily_divisor=0,
+        )
+        self.assertEqual(invalid.status_code, 400, invalid.data)
+
+    def test_dynamic_term_edits_require_reason_and_are_audited(self):
+        created = self.create_source(name="Logged terms", source_type="DYNAMIC")
+        detail = reverse("business-source-detail", args=[created.data["id"]])
+        rejected = self.client.patch(detail, {"daily_percent": "1.50"}, format="json")
+        self.assertEqual(rejected.status_code, 400)
+        changed = self.client.patch(detail, {
+            "daily_percent": "1.50",
+            "reason": "Rate correction",
+        }, format="json")
+        self.assertEqual(changed.status_code, 200, changed.data)
+        log = BusinessSource.objects.get(pk=created.data["id"]).term_edit_logs.get()
+        self.assertEqual(log.field, "daily_percent")
+        self.assertEqual(log.old_value, "2.00")
+        self.assertEqual(log.new_value, "1.50")
+        self.assertEqual(log.changed_by, self.user)
+
     def test_optional_email_and_required_address_are_validated(self):
         result = self.create_source(email="source@example.com", address="New Road, Kathmandu")
         self.assertEqual(result.status_code, 201, result.data)
@@ -177,6 +229,7 @@ class BusinessSourceIdentityTests(APITestCase):
         response = self.client.patch(reverse("business-source-detail", args=[source.id]), {
             "source_type": "COMPANY", "pan_vat_number": "123456789", "address": "Kathmandu",
             "interest_type": "PERCENTAGE", "interest_percentage": "2.5000", "days": 15,
+            "reason": "Source type correction",
         }, format="json")
         self.assertEqual(response.status_code, 200, response.data)
         filtered = self.client.get(reverse("customer-list"), {"customer_type": "COMPANY"})
@@ -188,6 +241,21 @@ class BusinessSourceIdentityTests(APITestCase):
         self.client.force_authenticate(None)
         for url in (reverse("business-source-list"), reverse("business-source-detail", args=[source.id])):
             self.assertEqual(self.client.get(url).status_code, 401)
+
+    def test_only_superusers_can_create_or_edit_sources(self):
+        source = self.create_source().data
+        member = User.objects.create_user(email="member@example.com", name="Member", password="test-pass")
+        member.is_staff = True
+        member.save(update_fields=("is_staff",))
+        self.client.force_authenticate(member)
+        response = self.client.post(reverse("business-source-list"), {
+            "name": "Forbidden", "phone": "9800000000", "address": "Kathmandu",
+        }, format="json")
+        self.assertEqual(response.status_code, 403)
+        response = self.client.patch(reverse("business-source-detail", args=[source["id"]]), {
+            "status": "INACTIVE",
+        }, format="json")
+        self.assertEqual(response.status_code, 403)
 
     def test_edit_source_preserves_identity_customer_links_and_legacy_fields(self):
         created = self.create_source(channel_type="REFERRAL", description="Existing referral", status="INACTIVE")
@@ -242,7 +310,8 @@ class BusinessSourceIdentityTests(APITestCase):
         changed = self.client.patch(
             detail,
             {"source_type": "COMPANY", "pan_vat_number": "0012345", "address": "Kathmandu",
-             "interest_type": "PERCENTAGE", "interest_percentage": "3.0000", "days": 15},
+             "interest_type": "PERCENTAGE", "interest_percentage": "3.0000", "days": 15,
+             "reason": "Source type correction"},
             format="json",
         )
         self.assertEqual(changed.status_code, 200, changed.data)

@@ -1,642 +1,513 @@
-from datetime import date, datetime, timedelta, timezone as datetime_timezone
+from datetime import date, timedelta
 from decimal import Decimal
-from unittest.mock import patch
+from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
-from django.db.models.deletion import ProtectedError
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 from django.urls import reverse
+from django.test import TransactionTestCase
 from rest_framework.test import APITestCase
-from rest_framework import serializers
 
 from accounts.models import BusinessSource, Customer, User
-from billing.models import CustomerCredit, CustomerCreditPayment
-from billing.interest import calculate_customer_credit
 
-from .models import Pledge, PledgeItem, nepal_today
+from .bs_dates import ad_to_bs, bs_month_calendar, bs_to_ad
+from .interest import calculate_pledge_interest
+from .models import Pledge, PledgeEditLog, PledgeItem, PledgePayment, nepal_today
+
+
+class InterestCalculationTests(APITestCase):
+    def pledge(self, principal="100000.00", *, source_type="INDIVIDUAL", date_value=date(2026, 1, 1), **terms):
+        preset = {
+            "INDIVIDUAL": ("2.00", 30, "2.00", 30),
+            "COMPANY": ("1.00", 15, "2.00", 30),
+        }.get(source_type, ("0", 0, "0", 1))
+        defaults = dict(zip(("upfront_percent", "upfront_days", "daily_percent", "daily_divisor"), preset))
+        defaults.update(terms)
+        return SimpleNamespace(pledge_date=date_value, principal_amount=Decimal(principal), **defaults)
+
+    def calc(self, pledge, as_of, payments=(), logs=()):
+        return calculate_pledge_interest(pledge, payments, logs, as_of)
+
+    def test_individual_rounding_and_principal_reduction(self):
+        pledge = self.pledge()
+        start = pledge.pledge_date
+        self.assertEqual(self.calc(pledge, start)["interest_earned"], Decimal("2000.00"))
+        self.assertEqual(self.calc(pledge, start + timedelta(days=29))["interest_earned"], Decimal("2000.00"))
+        self.assertEqual(self.calc(pledge, start + timedelta(days=30))["interest_earned"], Decimal("2066.67"))
+        self.assertEqual(self.calc(pledge, start + timedelta(days=120))["interest_earned"], Decimal("8066.97"))
+        payment = {
+            "payment_date": start + timedelta(days=120),
+            "interest_amount": Decimal("0.00"),
+            "principal_amount": Decimal("50000.00"),
+            "is_voided": False,
+        }
+        after = self.calc(pledge, start + timedelta(days=150), [payment])
+        self.assertEqual(after["daily_amount"], Decimal("33.33"))
+        self.assertEqual(after["unpaid_interest"], Decimal("9066.87"))
+        self.assertEqual(after["total_outstanding"], Decimal("59066.87"))
+
+    def test_company_upfront_period(self):
+        pledge = self.pledge(source_type="COMPANY")
+        start = pledge.pledge_date
+        self.assertEqual(self.calc(pledge, start)["interest_earned"], Decimal("1000.00"))
+        self.assertEqual(self.calc(pledge, start + timedelta(days=14))["interest_earned"], Decimal("1000.00"))
+        self.assertEqual(self.calc(pledge, start + timedelta(days=15))["interest_earned"], Decimal("1066.67"))
+
+    def test_principal_payment_inside_upfront_period_keeps_upfront_fixed(self):
+        pledge = self.pledge()
+        payment = {
+            "payment_date": pledge.pledge_date + timedelta(days=9),
+            "interest_amount": Decimal("0.00"),
+            "principal_amount": Decimal("50000.00"),
+            "is_voided": False,
+        }
+        result = self.calc(pledge, pledge.pledge_date + timedelta(days=30), [payment])
+        self.assertEqual(result["upfront_interest"], Decimal("2000.00"))
+        self.assertEqual(result["daily_interest"], Decimal("33.33"))
+        self.assertEqual(result["outstanding_principal"], Decimal("50000.00"))
+        self.assertEqual(result["interest_earned"], Decimal("2033.33"))
+
+    def test_zero_rate(self):
+        pledge = self.pledge(upfront_percent="0.00", daily_percent="0.00")
+        result = self.calc(pledge, pledge.pledge_date + timedelta(days=90))
+        self.assertEqual(result["interest_earned"], Decimal("0.00"))
+        self.assertEqual(result["total_outstanding"], Decimal("100000.00"))
+
+    def test_forfeit_pause_and_reopen_resume_on_reopen_date(self):
+        pledge = self.pledge()
+        start = pledge.pledge_date
+        logs = [
+            {"field": "status", "old_value": "ACTIVE", "new_value": "FORFEITED", "effective_date": start + timedelta(days=59), "id": 1},
+            {"field": "status", "old_value": "FORFEITED", "new_value": "ACTIVE", "effective_date": start + timedelta(days=99), "id": 2},
+        ]
+        result = self.calc(pledge, start + timedelta(days=120), logs=logs)
+        self.assertEqual(result["interest_earned"], Decimal("5466.84"))
+
+    def test_forfeit_and_reopen_same_day_has_no_pause_days(self):
+        pledge = self.pledge()
+        day = pledge.pledge_date + timedelta(days=59)
+        logs = [
+            {"field": "status", "old_value": "ACTIVE", "new_value": "FORFEITED", "effective_date": day, "id": 1},
+            {"field": "status", "old_value": "FORFEITED", "new_value": "ACTIVE", "effective_date": day, "id": 2},
+        ]
+        result = self.calc(pledge, day + timedelta(days=1), logs=logs)
+        self.assertEqual(result["interest_earned"], Decimal("4066.77"))
+
+
+class BikramSambatDateTests(APITestCase):
+    def test_bs_ad_round_trip_and_calendar_boundaries(self):
+        for value in ("2083-01-30", "2083-02-01", "2083-12-30", "2084-01-01"):
+            self.assertEqual(ad_to_bs(bs_to_ad(value)), value)
+        self.assertEqual((bs_to_ad("2083-02-01") - bs_to_ad("2083-01-30")).days, 2)
+        self.assertEqual((bs_to_ad("2084-01-01") - bs_to_ad("2083-12-30")).days, 1)
+
+    def test_invalid_and_out_of_range_dates_are_rejected(self):
+        for value in ("2083-13-01", "2083-02-32", "1974-12-31", "2101-01-01"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                bs_to_ad(value)
+
+    def test_calendar_month_has_bikram_sambat_days_and_weekday_offset(self):
+        calendar = bs_month_calendar(2083, 7)
+        first_ad = bs_to_ad("2083-07-01")
+        self.assertEqual(calendar["days"], list(range(1, len(calendar["days"]) + 1)))
+        self.assertEqual(calendar["first_weekday"], (first_ad.weekday() + 1) % 7)
+        self.assertEqual(calendar["year"], 2083)
+        self.assertEqual(calendar["month"], 7)
+
+    def test_calendar_rejects_invalid_and_out_of_range_months(self):
+        for year, month in ((2083, 0), (2083, 13), (1974, 12), (2101, 1)):
+            with self.subTest(year=year, month=month), self.assertRaises(ValueError):
+                bs_month_calendar(year, month)
 
 
 class PledgeApiTests(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
-            email="pledges@example.com",
-            name="Pledge tester",
-            password="test-password",
-        )
+        self.cashier = User.objects.create_user(email="cashier@example.com", name="Cashier", password="test-pass")
+        self.staff = User.objects.create_user(email="staff@example.com", name="Staff", password="test-pass", is_staff=True)
+        self.admin = User.objects.create_superuser(email="admin@example.com", name="Admin", password="test-pass")
         self.source = BusinessSource.objects.create(
-            name="Pledge referral",
-            channel_type=BusinessSource.ChannelType.REFERRAL,
+            name="Individual source",
+            source_type=BusinessSource.Type.INDIVIDUAL,
+            phone="9812345678",
+            address="Kathmandu",
         )
-        self.customer = Customer.objects.create(
-            business_source=self.source,
-            name="Asha Rai",
-            phone="9800000000",
-        )
-        self.other_customer = Customer.objects.create(
-            business_source=self.source,
-            name="Mina Thapa",
-            phone="9811111111",
-        )
-        self.client.force_authenticate(user=self.user)
+        self.customer = Customer.objects.create(name="Asha Rai", phone="9800000000", business_source=self.source)
+        self.client.force_authenticate(self.cashier)
 
-    def item(self, **overrides):
+    def pledge_data(self, **overrides):
         return {
-            "description": "Gold ring",
-            "weight_grams": "5.250",
-            "quantity": 1,
+            "customer": self.customer.pk,
+            "business_source_id": self.source.pk,
+            "pledge_date": ad_to_bs(nepal_today()),
+            "principal_amount": "100000.00",
+            "items": [{
+                "particulars": "Gold ring",
+                "weight": "5.250",
+                "unit": "GRAM",
+                "ghat": "",
+                "jor": "1",
+            }],
             **overrides,
         }
 
     def create_pledge(self, **overrides):
-        payload = {
-            "customer": self.customer.id,
-            "amount_received": "25000.00",
-            "items": [self.item()],
-        }
-        payload.update(overrides)
-        return self.client.post(reverse("pledge-list"), payload, format="json")
+        return self.client.post(reverse("pledge-list"), self.pledge_data(**overrides), format="json")
 
-    def test_create_pledge_with_customer_source_and_multiple_items(self):
-        response = self.create_pledge(
-            items=[
-                self.item(),
-                self.item(description="Silver chain", weight_grams="12.000", quantity=2),
-            ]
-        )
+    def test_form_defaults_return_today_in_bikram_sambat(self):
+        response = self.client.get(reverse("pledge-form-defaults"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"today_bs": ad_to_bs(nepal_today())})
 
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get(reverse("pledge-form-defaults")).status_code, 401)
+
+    def test_calendar_endpoint_returns_month_and_requires_authentication(self):
+        response = self.client.get(reverse("pledge-calendar"), {"year": 2083, "month": 7})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["year"], 2083)
+        self.assertEqual(response.data["month"], 7)
+        self.assertEqual(response.data["first_weekday"], (bs_to_ad("2083-07-01").weekday() + 1) % 7)
+        self.assertEqual(response.data["days"], list(range(1, len(response.data["days"]) + 1)))
+
+        invalid = self.client.get(reverse("pledge-calendar"), {"year": 2083, "month": 13})
+        self.assertEqual(invalid.status_code, 400)
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get(reverse("pledge-calendar"), {"year": 2083, "month": 7}).status_code, 401)
+
+    def test_authenticated_cashier_creates_pledge_and_freezes_source_terms(self):
+        response = self.create_pledge()
         self.assertEqual(response.status_code, 201, response.data)
         pledge = Pledge.objects.get(pk=response.data["id"])
-        self.assertEqual(pledge.customer, self.customer)
-        self.assertEqual(response.data["customer_name"], self.customer.name)
-        self.assertEqual(response.data["business_source_id"], self.source.id)
-        self.assertEqual(response.data["business_source_name"], self.source.name)
-        self.assertRegex(response.data["pledge_number"], r"^PLG-[A-F0-9]{32}$")
-        self.assertEqual(response.data["status"], Pledge.Status.ACTIVE)
-        self.assertFalse(response.data["is_overdue"])
-        self.assertEqual(len(response.data["items"]), 2)
-        self.assertEqual(
-            [item["sequence"] for item in response.data["items"]],
-            [1, 2],
-        )
-        self.assertEqual(PledgeItem.objects.filter(pledge=pledge).count(), 2)
-        credit = CustomerCredit.objects.get(pledge=pledge)
-        self.assertEqual(credit.customer, self.customer)
-        self.assertEqual(credit.principal_amount, Decimal("25000.00"))
-        self.assertEqual(credit.credit_date, pledge.pledge_date)
-        self.assertEqual(response.data["credit_id"], credit.id)
-        self.assertEqual(response.data["financial_status"], "UNPAID")
-
-    def test_pledge_credit_creation_is_atomic_and_duplicate_safe(self):
-        with patch(
-            "pledges.serializers.CustomerCreditSerializer.create",
-            side_effect=serializers.ValidationError({"credit": "Forced failure."}),
-        ):
-            failed = self.create_pledge()
-        self.assertEqual(failed.status_code, 400, failed.data)
-        self.assertEqual(Pledge.objects.count(), 0)
-        self.assertEqual(PledgeItem.objects.count(), 0)
-        self.assertEqual(CustomerCredit.objects.count(), 0)
-
-        created = self.create_pledge()
-        pledge = Pledge.objects.get(pk=created.data["id"])
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                CustomerCredit.objects.create(
-                    pledge=pledge, customer=self.customer, credit_date=pledge.pledge_date,
-                    principal_amount=pledge.amount_received, credit_customer_type="INDIVIDUAL",
-                    credit_interest_type="PERCENTAGE", credit_interest_amount="2.0000",
-                    credit_basis="100.00", credit_period_days=30,
-                )
-
-    def test_pledge_snapshots_configured_terms_and_source_edits_do_not_rewrite_them(self):
-        self.source.interest_type = BusinessSource.InterestType.PERCENTAGE
-        self.source.interest_percentage = Decimal("3.5000")
-        self.source.days = 10
-        self.source.save(update_fields=("interest_type", "interest_percentage", "days"))
-        created = self.create_pledge(amount_received="3000.00")
-        credit = CustomerCredit.objects.get(pledge_id=created.data["id"])
-        self.assertEqual(credit.credit_interest_type, "PERCENTAGE")
-        self.assertEqual(credit.credit_interest_amount, Decimal("3.5000"))
-        self.assertEqual(credit.credit_period_days, 10)
-        self.assertEqual(created.data["credit_calculation"]["interest_due"], "105.00")
-
-        self.source.interest_percentage = Decimal("8.0000")
-        self.source.days = 5
-        self.source.save(update_fields=("interest_percentage", "days"))
-        credit.refresh_from_db()
-        self.assertEqual(credit.credit_interest_amount, Decimal("3.5000"))
-        self.assertEqual(credit.credit_period_days, 10)
-
-    def test_company_and_dynamic_pledges_use_their_configured_methods(self):
+        self.assertEqual(response.data["pledge_date"], ad_to_bs(pledge.pledge_date))
+        self.assertEqual(pledge.upfront_percent, Decimal("2.00"))
+        self.assertEqual(pledge.upfront_days, 30)
+        self.assertEqual(pledge.daily_percent, Decimal("2.00"))
+        self.assertEqual(pledge.daily_divisor, 30)
+        self.assertEqual(pledge.customer_name, self.customer.name)
+        self.assertEqual(pledge.address, self.source.address)
+        self.assertEqual(pledge.phone, self.source.phone)
+        self.assertIsNone(pledge.due_date)
+        self.assertEqual(response.data["items"][0]["unit"], "GRAM")
         self.source.source_type = BusinessSource.Type.COMPANY
-        self.source.interest_type = BusinessSource.InterestType.PERCENTAGE
-        self.source.interest_percentage = Decimal("2.0000")
-        self.source.interest_amount = None
-        self.source.days = 15
-        self.source.save(update_fields=(
-            "source_type", "interest_type", "interest_percentage", "interest_amount", "days",
-        ))
-        company = self.create_pledge(amount_received="3000.00")
-        company_credit = CustomerCredit.objects.get(pledge_id=company.data["id"])
-        self.assertEqual(calculate_customer_credit(company_credit, company_credit.credit_date)["interest_due"], "60.00")
-        self.assertEqual(
-            calculate_customer_credit(company_credit, company_credit.credit_date + timedelta(days=15))["interest_due"],
-            "120.00",
-        )
+        self.source.save()
+        pledge.refresh_from_db()
+        self.assertEqual(pledge.upfront_percent, Decimal("2.00"))
+        self.assertEqual(pledge.upfront_days, 30)
 
-        dynamic_source = BusinessSource.objects.create(
-            name="Pledge dynamic", source_type=BusinessSource.Type.DYNAMIC,
-            interest_type=BusinessSource.InterestType.FIXED_AMOUNT,
-            interest_amount=Decimal("125.00"), days=7,
+    def test_paper_fields_due_date_and_item_values_validate(self):
+        pledge_date = nepal_today() - timedelta(days=2)
+        due_date = pledge_date + timedelta(days=10)
+        created = self.create_pledge(
+            pledge_date=ad_to_bs(pledge_date),
+            due_date=ad_to_bs(due_date),
+            written_text="लिखितम् विवरण",
+            customer_name="Printed customer name",
+            address="Edited address",
+            phone="9800000000",
+            items=[{
+                "particulars": "Gold necklace",
+                "weight": "2.125",
+                "unit": "TOLA",
+                "ghat": "दुई टुक्रा",
+                "jor": "1.250",
+            }],
         )
-        self.other_customer.business_source = dynamic_source
-        self.other_customer.save(update_fields=("business_source",))
-        dynamic = self.create_pledge(customer=self.other_customer.id, amount_received="3000.00")
-        dynamic_credit = CustomerCredit.objects.get(pledge_id=dynamic.data["id"])
-        self.assertEqual(dynamic_credit.credit_interest_type, "FIXED_AMOUNT")
-        self.assertEqual(calculate_customer_credit(dynamic_credit, dynamic_credit.credit_date)["interest_due"], "125.00")
-        self.assertEqual(
-            calculate_customer_credit(dynamic_credit, dynamic_credit.credit_date + timedelta(days=7))["interest_due"],
-            "250.00",
+        self.assertEqual(created.status_code, 201, created.data)
+        pledge = Pledge.objects.get(pk=created.data["id"])
+        item = pledge.items.get()
+        self.assertEqual(pledge.due_date, due_date)
+        self.assertEqual(pledge.written_text, "लिखितम् विवरण")
+        self.assertEqual(pledge.customer_name, "Printed customer name")
+        self.assertEqual(pledge.address, "Edited address")
+        self.assertEqual(pledge.phone, "9800000000")
+        self.assertEqual(item.weight, Decimal("2.125"))
+        self.assertEqual(item.unit, PledgeItem.Unit.TOLA)
+        self.assertEqual(item.ghat, "दुई टुक्रा")
+        self.assertEqual(item.jor, Decimal("1.250"))
+
+        same_day_due_date = self.create_pledge(
+            pledge_date=ad_to_bs(pledge_date),
+            due_date=ad_to_bs(pledge_date),
         )
-    def test_partial_and_full_payment_do_not_automatically_redeem(self):
-        created = self.create_pledge(amount_received="3000.00")
-        credit_id = created.data["credit_id"]
-        partial = self.client.post(reverse("credit-payment", args=[credit_id]), {
-            "principal_amount": "1000.00",
-        }, format="json")
-        self.assertEqual(partial.status_code, 201, partial.data)
-        detail = self.client.get(reverse("pledge-detail", args=[created.data["id"]]))
-        self.assertEqual(detail.data["financial_status"], "PARTIALLY_PAID")
-        refused = self.client.patch(reverse("pledge-detail", args=[created.data["id"]]), {
-            "status": Pledge.Status.REDEEMED,
-        }, format="json")
-        self.assertEqual(refused.status_code, 400, refused.data)
-        cancelled = self.client.patch(reverse("pledge-detail", args=[created.data["id"]]), {
-            "status": Pledge.Status.CANCELLED,
-        }, format="json")
-        self.assertEqual(cancelled.status_code, 400, cancelled.data)
+        self.assertEqual(same_day_due_date.status_code, 201, same_day_due_date.data)
+        self.assertEqual(same_day_due_date.data["due_date"], ad_to_bs(pledge_date))
 
-        calculation = partial.data["calculation"]
-        settled = self.client.post(reverse("credit-payment", args=[credit_id]), {
-            "principal_amount": calculation["principal_due"],
-            "interest_amount": calculation["interest_due"],
-        }, format="json")
-        self.assertEqual(settled.status_code, 201, settled.data)
-        detail = self.client.get(reverse("pledge-detail", args=[created.data["id"]]))
-        self.assertEqual(detail.data["financial_status"], "PAID")
-        self.assertEqual(detail.data["status"], Pledge.Status.ACTIVE)
+        past_due_date = self.create_pledge(
+            pledge_date=ad_to_bs(pledge_date),
+            due_date=ad_to_bs(pledge_date - timedelta(days=1)),
+        )
+        self.assertEqual(past_due_date.status_code, 201, past_due_date.data)
 
-    def test_linked_credit_makes_financial_identity_immutable(self):
-        created = self.create_pledge()
-        url = reverse("pledge-detail", args=[created.data["id"]])
-        for payload in (
-            {"customer": self.other_customer.id},
-            {"amount_received": "30000.00"},
+        for item in (
+            {"particulars": "Gold ring", "weight": "0", "unit": "GRAM", "jor": "1"},
+            {"particulars": "Gold ring", "weight": "1", "unit": "GRAM", "jor": "0"},
+            {"particulars": "Gold ring", "weight": "1", "unit": "ANAA", "jor": "1"},
+            {"particulars": "Gold ring", "weight": "1.0001", "unit": "GRAM", "jor": "1"},
+            {"particulars": "Gold ring", "weight": "1", "unit": "GRAM", "jor": "1.0001"},
         ):
-            with self.subTest(payload=payload):
-                response = self.client.patch(url, payload, format="json")
-                self.assertEqual(response.status_code, 400, response.data)
-        credit = CustomerCredit.objects.get(pledge_id=created.data["id"])
-        self.assertEqual(credit.customer, self.customer)
-        self.assertEqual(credit.principal_amount, Decimal("25000.00"))
+            with self.subTest(item=item):
+                invalid_item = self.create_pledge(items=[item])
+                self.assertEqual(invalid_item.status_code, 400, invalid_item.data)
 
-    def test_pledge_date_can_change_before_payment_and_updates_credit_start_date(self):
-        created = self.create_pledge()
-        changed_date = (nepal_today() - timedelta(days=10)).isoformat()
-        response = self.client.patch(
-            reverse("pledge-detail", args=[created.data["id"]]),
-            {"pledge_date": changed_date},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200, response.data)
-        credit = CustomerCredit.objects.get(pledge_id=created.data["id"])
-        self.assertEqual(response.data["pledge_date"], changed_date)
-        self.assertEqual(credit.credit_date.isoformat(), changed_date)
-
-    def test_pledge_date_cannot_change_after_payment(self):
-        created = self.create_pledge()
-        payment = self.client.post(reverse("credit-payment", args=[created.data["credit_id"]]), {
-            "principal_amount": "1.00",
-        }, format="json")
-        self.assertEqual(payment.status_code, 201, payment.data)
-        original_date = created.data["pledge_date"]
-        response = self.client.patch(
-            reverse("pledge-detail", args=[created.data["id"]]),
-            {"pledge_date": (nepal_today() - timedelta(days=10)).isoformat()},
-            format="json",
-        )
+    def test_only_customers_linked_to_the_selected_source_can_have_pledges(self):
+        unlinked = Customer.objects.create(name="Unlinked customer")
+        response = self.create_pledge(customer=unlinked.pk)
         self.assertEqual(response.status_code, 400, response.data)
-        credit = CustomerCredit.objects.get(pk=created.data["credit_id"])
-        self.assertEqual(credit.credit_date.isoformat(), original_date)
 
-    def test_pledge_credit_is_in_customer_and_source_accounts_without_bill(self):
-        created = self.create_pledge(amount_received="3000.00")
-        self.assertEqual(self.client.get(reverse("bill-list")).data, [])
-        customer_summary = self.client.get(
-            reverse("customer-account", args=[self.customer.id])
-        ).data["summary"]
-        self.assertEqual(customer_summary["credit_principal_due"], "3000.00")
-        self.assertEqual(customer_summary["interest_due"], "60.00")
-        source_account = self.client.get(
-            reverse("business-source-account", args=[self.source.id])
-        ).data
-        self.assertEqual(source_account["pledge_credit_summary"]["principal_due"], "3000.00")
-        self.assertEqual(source_account["pledge_credit_summary"]["interest_due"], "60.00")
-        self.assertEqual(source_account["pledge_credits"][0]["pledge_number"], created.data["pledge_number"])
-        self.assertTrue(source_account["pledge_credit_statement"])
-
-    def test_historical_pledge_remains_unlinked(self):
-        pledge = Pledge.objects.create(customer=self.customer, amount_received="100.00")
-        PledgeItem.objects.create(
-            pledge=pledge, description="Historical item", weight_grams="1.000", quantity=1,
-        )
-        response = self.client.get(reverse("pledge-detail", args=[pledge.id]))
-        self.assertEqual(response.data["financial_status"], "NOT_LINKED")
-        self.assertIsNone(response.data["credit_id"])
-        self.assertFalse(CustomerCredit.objects.filter(pledge=pledge).exists())
-
-    def test_create_requires_items_and_customer(self):
-        missing_items = self.create_pledge(items=[])
-        missing_customer = self.client.post(
-            reverse("pledge-list"),
-            {"amount_received": "100.00", "items": [self.item()]},
-            format="json",
-        )
-
-        self.assertEqual(missing_items.status_code, 400, missing_items.data)
-        self.assertEqual(missing_customer.status_code, 400, missing_customer.data)
-
-    def test_quantity_one_is_accepted(self):
-        response = self.create_pledge(items=[self.item(quantity=1)])
-
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data["items"][0]["quantity"], 1)
-
-    def test_api_pledge_and_lifecycle_dates_use_nepal_local_date(self):
-        utc_now = datetime(2025, 12, 31, 18, 30, tzinfo=datetime_timezone.utc)
-
-        with patch("pledges.models.timezone.now", return_value=utc_now):
-            redeemed = self.create_pledge()
-
-        expected_date = "2026-01-01"
-        self.assertEqual(redeemed.status_code, 201, redeemed.data)
-        self.assertEqual(redeemed.data["pledge_date"], expected_date)
-        self.assertEqual(CustomerCredit.objects.get(pledge_id=redeemed.data["id"]).credit_date.isoformat(), expected_date)
-
-    def test_negative_amount_weight_and_quantity_are_rejected_by_api(self):
-        invalid_payloads = (
-            {"amount_received": "-1.00"},
-            {"items": [self.item(weight_grams="-0.001")]},
-            {"items": [self.item(quantity=0)]},
-            {"items": [self.item(quantity=-1)]},
-        )
-        for index, invalid in enumerate(invalid_payloads):
-            with self.subTest(invalid=invalid):
-                payload = {
-                    "customer": self.customer.id,
-                    "amount_received": "25000.00",
-                    "items": [self.item()],
-                }
-                payload.update(invalid)
-                response = self.client.post(
-                    reverse("pledge-list"),
-                    payload,
-                    format="json",
-                )
-                self.assertEqual(response.status_code, 400, response.data)
-                self.assertEqual(Pledge.objects.count(), 0, f"Invalid case {index} persisted.")
-
-    def test_list_retrieve_search_and_update(self):
+    def test_paper_field_and_item_edits_are_logged_and_locked_after_payment(self):
         created = self.create_pledge()
-        pledge_id = created.data["id"]
-
-        listing = self.client.get(reverse("pledge-list"), {"search": "Asha"})
-        detail = self.client.get(reverse("pledge-detail", args=[pledge_id]))
-        updated = self.client.patch(
-            reverse("pledge-detail", args=[pledge_id]),
-            {
-                "due_date": "2099-01-02",
-                "items": [self.item(description="Updated ring")],
-            },
-            format="json",
-        )
-
-        self.assertEqual(listing.status_code, 200, listing.data)
-        self.assertEqual(len(listing.data), 1)
-        self.assertEqual(detail.status_code, 200, detail.data)
+        detail = reverse("pledge-detail", args=[created.data["id"]])
+        self.client.force_authenticate(self.staff)
+        no_reason = self.client.patch(detail, {
+            "items": [{
+                "particulars": "Missing reason",
+                "weight": "5.250",
+                "unit": "GRAM",
+                "ghat": "",
+                "jor": "1",
+            }],
+        }, format="json")
+        self.assertEqual(no_reason.status_code, 400, no_reason.data)
+        updated = self.client.patch(detail, {
+            "customer_name": "Asha Rai updated",
+            "address": "Patan",
+            "phone": "9800000001",
+            "written_text": "Updated लिखितम्",
+            "items": [{
+                "particulars": "Gold ring, revised",
+                "weight": "5.250",
+                "unit": "GRAM",
+                "ghat": "One stone",
+                "jor": "1.500",
+            }],
+            "reason": "Correct printed details",
+        }, format="json")
         self.assertEqual(updated.status_code, 200, updated.data)
-        self.assertEqual(updated.data["customer"], self.customer.id)
-        self.assertEqual(updated.data["amount_received"], "25000.00")
-        self.assertEqual(updated.data["due_date"], "2099-01-02")
-        self.assertEqual(updated.data["items"][0]["description"], "Updated ring")
-        self.assertEqual(updated.data["pledge_number"], created.data["pledge_number"])
-        self.assertEqual(PledgeItem.objects.filter(pledge_id=pledge_id).count(), 1)
+        logs = list(PledgeEditLog.objects.filter(pledge_id=created.data["id"]))
+        self.assertEqual(len(logs), 5)
+        self.assertEqual({log.field for log in logs}, {"customer_name", "address", "phone", "written_text", "items"})
+        self.assertEqual(len({log.edit_id for log in logs}), 1)
 
-    def test_invalid_update_and_filters_are_rejected(self):
+        pledge = Pledge.objects.get(pk=created.data["id"])
+        PledgePayment.objects.create(
+            pledge=pledge,
+            payment_date=nepal_today(),
+            principal_amount="100.00",
+            created_by=self.cashier,
+        )
+        locked = self.client.patch(detail, {
+            "items": [{
+                "particulars": "Changed after payment",
+                "weight": "5.250",
+                "unit": "GRAM",
+                "ghat": "",
+                "jor": "1",
+            }],
+            "reason": "Attempt item edit",
+        }, format="json")
+        self.assertEqual(locked.status_code, 400, locked.data)
+        self.assertEqual(pledge.items.get().particulars, "Gold ring, revised")
+
+    def test_inactive_or_incomplete_sources_cannot_be_used(self):
+        self.source.status = BusinessSource.Status.INACTIVE
+        self.source.save()
+        self.assertEqual(self.create_pledge().status_code, 400)
+        self.source.status = BusinessSource.Status.ACTIVE
+        self.source.source_type = BusinessSource.Type.DYNAMIC
+        self.source.save()
+        response = self.create_pledge()
+        self.assertEqual(response.status_code, 400, response.data)
+
+    def test_edit_before_first_payment_and_lock_after_any_payment(self):
         created = self.create_pledge()
-        detail_url = reverse("pledge-detail", args=[created.data["id"]])
+        self.assertEqual(created.status_code, 201, created.data)
+        detail = reverse("pledge-detail", args=[created.data["id"]])
+        blocked = self.client.patch(detail, {
+            "principal_amount": "90000.00",
+            "reason": "Correction before payment",
+        }, format="json")
+        self.assertEqual(blocked.status_code, 403)
+        self.client.force_authenticate(self.staff)
+        edited = self.client.patch(detail, {
+            "principal_amount": "90000.00",
+            "upfront_days": 29,
+            "reason": "Correction before payment",
+        }, format="json")
+        self.assertEqual(edited.status_code, 200, edited.data)
+        logs = PledgeEditLog.objects.filter(pledge_id=created.data["id"])
+        self.assertEqual(logs.count(), 2)
+        self.assertEqual(logs.values_list("edit_id", flat=True).distinct().count(), 1)
 
-        negative_amount = self.client.patch(
-            detail_url,
-            {"amount_received": "-1.00"},
+        pledge = Pledge.objects.get(pk=created.data["id"])
+        PledgePayment.objects.create(
+            pledge=pledge,
+            payment_date=nepal_today(),
+            principal_amount="100.00",
+            created_by=self.cashier,
+        )
+        self.assertEqual(self.client.get(detail).data["status_label"], "Partially Paid")
+        self.client.force_authenticate(self.staff)
+        locked = self.client.patch(detail, {"principal_amount": "80000.00", "reason": "Another change"}, format="json")
+        self.assertEqual(locked.status_code, 400, locked.data)
+        pledge.refresh_from_db()
+        self.assertEqual(pledge.principal_amount, Decimal("90000.00"))
+
+    def test_create_payment_caps_amount_and_returns_bs_date(self):
+        created = self.create_pledge(pledge_date=ad_to_bs(nepal_today() - timedelta(days=31)))
+        self.assertEqual(created.status_code, 201, created.data)
+        url = reverse("pledge-payment-list", args=[created.data["id"]])
+        too_much_interest = self.client.post(url, {
+            "payment_date": ad_to_bs(nepal_today()), "interest_amount": "3000.00", "principal_amount": "0.00",
+        }, format="json")
+        self.assertEqual(too_much_interest.status_code, 400, too_much_interest.data)
+        self.assertEqual(PledgePayment.objects.filter(pledge_id=created.data["id"]).count(), 0)
+        valid = self.client.post(url, {
+            "payment_date": ad_to_bs(nepal_today()), "interest_amount": "2066.67", "principal_amount": "500.00",
+        }, format="json")
+        self.assertEqual(valid.status_code, 201, valid.data)
+        self.assertEqual(valid.data["payment_date"], ad_to_bs(nepal_today()))
+
+    def test_payment_date_cannot_be_backdated_before_latest_payment(self):
+        created = self.create_pledge(pledge_date=ad_to_bs(nepal_today() - timedelta(days=31)))
+        url = reverse("pledge-payment-list", args=[created.data["id"]])
+        self.assertEqual(self.client.post(url, {
+            "payment_date": ad_to_bs(nepal_today()), "interest_amount": "100.00",
+        }, format="json").status_code, 201)
+        earlier = self.client.post(url, {
+            "payment_date": ad_to_bs(nepal_today() - timedelta(days=1)), "interest_amount": "100.00",
+        }, format="json")
+        self.assertEqual(earlier.status_code, 400)
+
+    def test_status_permissions_and_transition_reasons(self):
+        created = self.create_pledge()
+        status_url = reverse("pledge-status", args=[created.data["id"]])
+        self.assertEqual(self.client.post(status_url, {"status": "FORFEITED"}, format="json").status_code, 403)
+        self.client.force_authenticate(self.staff)
+        self.assertEqual(self.client.post(status_url, {"status": "FORFEITED", "reason": "reason"}, format="json").status_code, 403)
+        self.assertEqual(self.client.post(status_url, {"status": "CLOSED"}, format="json").status_code, 400)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.post(status_url, {"status": "FORFEITED"}, format="json").status_code, 400)
+        forfeited = self.client.post(status_url, {"status": "FORFEITED", "reason": "Customer absent"}, format="json")
+        self.assertEqual(forfeited.status_code, 200, forfeited.data)
+        self.assertEqual(self.client.post(status_url, {"status": "ACTIVE"}, format="json").status_code, 400)
+        reopened = self.client.post(status_url, {"status": "ACTIVE", "reason": "Owner approved"}, format="json")
+        self.assertEqual(reopened.status_code, 200, reopened.data)
+        self.assertEqual(PledgeEditLog.objects.filter(pledge_id=created.data["id"], field="status").count(), 2)
+
+    def test_business_source_cannot_be_deleted_while_pledges_exist(self):
+        created = self.create_pledge()
+        self.client.force_authenticate(self.admin)
+        response = self.client.delete(reverse("business-source-detail", args=[self.source.pk]))
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertIn("pledges", response.data["detail"])
+        self.assertTrue(BusinessSource.objects.filter(pk=self.source.pk).exists())
+
+    def test_paid_closure_allows_no_reason_and_logs_the_transition(self):
+        created = self.create_pledge(pledge_date=ad_to_bs(nepal_today() - timedelta(days=2)))
+        pledge = Pledge.objects.get(pk=created.data["id"])
+        PledgePayment.objects.create(
+            pledge=pledge,
+            payment_date=nepal_today() - timedelta(days=1),
+            interest_amount="2000.00",
+            principal_amount="100000.00",
+            created_by=self.cashier,
+        )
+        self.client.force_authenticate(self.staff)
+        closed = self.client.post(
+            reverse("pledge-status", args=[pledge.pk]),
+            {"status": "CLOSED"},
             format="json",
         )
-        invalid_filter = self.client.get(reverse("pledge-list"), {"status": "OVERDUE"})
+        self.assertEqual(closed.status_code, 200, closed.data)
+        log = PledgeEditLog.objects.get(pledge=pledge, field="status")
+        self.assertEqual(log.reason, "")
+        self.assertEqual(log.changed_by, self.staff)
+        blocked = self.client.post(reverse("pledge-payment-list", args=[pledge.pk]), {
+            "payment_date": ad_to_bs(nepal_today()), "principal_amount": "1.00",
+        }, format="json")
+        self.assertEqual(blocked.status_code, 400)
 
-        self.assertEqual(negative_amount.status_code, 400, negative_amount.data)
-        self.assertEqual(invalid_filter.status_code, 400, invalid_filter.data)
-
-    def test_active_pledge_can_be_redeemed_and_records_date(self):
-        created = self.create_pledge()
-        calculation = created.data["credit_calculation"]
-        payment = self.client.post(reverse("credit-payment", args=[created.data["credit_id"]]), {
-            "principal_amount": calculation["principal_due"],
-            "interest_amount": calculation["interest_due"],
+    def test_payment_correction_and_removal_are_staff_only_and_logged(self):
+        created = self.create_pledge(pledge_date=ad_to_bs(nepal_today() - timedelta(days=31)))
+        payment = self.client.post(reverse("pledge-payment-list", args=[created.data["id"]]), {
+            "payment_date": ad_to_bs(nepal_today()), "interest_amount": "100.00",
         }, format="json")
         self.assertEqual(payment.status_code, 201, payment.data)
-        response = self.client.patch(
-            reverse("pledge-detail", args=[created.data["id"]]),
-            {"status": Pledge.Status.REDEEMED},
-            format="json",
-        )
+        correction_url = reverse("pledge-payment-correction", args=[payment.data["id"]])
+        self.assertEqual(self.client.post(correction_url, {"interest_amount": "150.00", "reason": "Fix amount"}, format="json").status_code, 403)
+        self.client.force_authenticate(self.staff)
+        corrected = self.client.post(correction_url, {"interest_amount": "150.00", "reason": "Fix amount"}, format="json")
+        self.assertEqual(corrected.status_code, 200, corrected.data)
+        removed = self.client.post(reverse("pledge-payment-removal", args=[payment.data["id"]]), {"reason": "Duplicate receipt"}, format="json")
+        self.assertEqual(removed.status_code, 200, removed.data)
+        self.assertTrue(PledgePayment.objects.get(pk=payment.data["id"]).is_voided)
+        logs = PledgeEditLog.objects.filter(payment_id=payment.data["id"])
+        self.assertEqual(logs.count(), 2)
 
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["status"], Pledge.Status.REDEEMED)
-        self.assertEqual(response.data["redeemed_date"], nepal_today().isoformat())
-        self.assertIsNone(response.data["cancelled_date"])
-        duplicate = self.client.patch(
-            reverse("pledge-detail", args=[created.data["id"]]),
-            {"status": Pledge.Status.REDEEMED}, format="json",
-        )
-        self.assertEqual(duplicate.status_code, 400, duplicate.data)
-
-    def test_active_pledge_can_be_cancelled_and_terminal_status_cannot_reopen(self):
-        created = self.create_pledge()
-        detail_url = reverse("pledge-detail", args=[created.data["id"]])
-        cancelled = self.client.patch(
-            detail_url,
-            {"status": Pledge.Status.CANCELLED},
-            format="json",
-        )
-        self.assertEqual(cancelled.status_code, 400, cancelled.data)
-        self.assertIn("reversal is not available", str(cancelled.data))
-
-    def test_closed_pledges_reject_all_transaction_updates(self):
-        transaction_updates = (
-            {"customer": self.other_customer.id},
-            {"pledge_date": "2020-01-01"},
-            {"amount_received": "30000.00"},
-            {"due_date": "2026-12-31"},
-            {"items": [self.item(description="Replacement item")]},
-            {"status": Pledge.Status.ACTIVE},
-        )
-        for status in (Pledge.Status.REDEEMED, Pledge.Status.CANCELLED):
-            with self.subTest(status=status):
-                pledge = Pledge.objects.create(
-                    customer=self.customer, amount_received="25000.00",
-                    pledge_date="2020-01-01", due_date="2020-01-02",
-                )
-                PledgeItem.objects.create(pledge=pledge, description="Gold ring", weight_grams="5.250", quantity=1)
-                detail_url = reverse("pledge-detail", args=[pledge.id])
-                closed = self.client.patch(
-                    detail_url,
-                    {"status": status},
-                    format="json",
-                )
-                self.assertEqual(closed.status_code, 200, closed.data)
-                pledge.refresh_from_db()
-                original_items = list(pledge.items.values("description", "quantity"))
-                original_values = (
-                    pledge.customer_id,
-                    pledge.pledge_date,
-                    pledge.amount_received,
-                    pledge.due_date,
-                )
-
-                for update in transaction_updates:
-                    with self.subTest(update=update):
-                        response = self.client.patch(
-                            detail_url,
-                            update,
-                            format="json",
-                        )
-                        self.assertEqual(response.status_code, 400, response.data)
-                        self.assertIn(
-                            "Closed pledges cannot be edited.",
-                            str(response.data),
-                        )
-
-                pledge.refresh_from_db()
-                self.assertEqual(
-                    (
-                        pledge.customer_id,
-                        pledge.pledge_date,
-                        pledge.amount_received,
-                        pledge.due_date,
-                    ),
-                    original_values,
-                )
-                self.assertEqual(
-                    list(pledge.items.values("description", "quantity")),
-                    original_items,
-                )
-
-    def test_redeemed_pledge_cannot_be_cancelled(self):
-        created = self.create_pledge()
-        detail_url = reverse("pledge-detail", args=[created.data["id"]])
-        calculation = created.data["credit_calculation"]
-        self.client.post(reverse("credit-payment", args=[created.data["credit_id"]]), {
-            "principal_amount": calculation["principal_due"],
-            "interest_amount": calculation["interest_due"],
-        }, format="json")
-        self.client.patch(
-            detail_url,
-            {"status": Pledge.Status.REDEEMED},
-            format="json",
-        )
-        response = self.client.patch(
-            detail_url,
-            {"status": Pledge.Status.CANCELLED},
-            format="json",
-        )
-
-        self.assertEqual(response.status_code, 400, response.data)
-
-    def test_due_date_before_pledge_date_is_rejected(self):
-        response = self.create_pledge(
-            pledge_date="2026-10-10",
-            due_date="2026-10-09",
-        )
-
-        self.assertEqual(response.status_code, 400, response.data)
-
-    def test_due_date_before_default_pledge_date_is_rejected(self):
-        response = self.create_pledge(due_date="2020-01-01")
-
-        self.assertEqual(response.status_code, 400, response.data)
-
-    def test_overdue_is_derived_not_a_status(self):
-        response = self.create_pledge(
-            pledge_date="2020-01-01",
-            due_date="2020-01-02",
-        )
-
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertTrue(response.data["is_overdue"])
-        self.assertNotIn("OVERDUE", Pledge.Status.values)
-
-    def test_elapsed_days_uses_nepal_date_and_never_goes_negative(self):
-        pledge = Pledge.objects.create(
-            customer=self.customer, amount_received="100.00", pledge_date="2026-10-01",
-        )
-        PledgeItem.objects.create(
-            pledge=pledge, description="Elapsed item", weight_grams="1.000", quantity=1,
-        )
-        with patch("pledges.serializers.nepal_today", return_value=date(2026, 11, 6)):
-            response = self.client.get(reverse("pledge-detail", args=[pledge.id]))
-        self.assertEqual(response.data["elapsed_days"], 36)
-
-        pledge.pledge_date = date(2026, 12, 1)
-        pledge.save(update_fields=("pledge_date",))
-        with patch("pledges.serializers.nepal_today", return_value=date(2026, 11, 6)):
-            response = self.client.get(reverse("pledge-detail", args=[pledge.id]))
-        self.assertEqual(response.data["elapsed_days"], 0)
-
-    def test_pledge_requires_authentication(self):
-        self.client.force_authenticate(user=None)
+    def test_anonymous_pledge_api_is_blocked(self):
+        self.client.force_authenticate(None)
         response = self.client.get(reverse("pledge-list"))
-
         self.assertEqual(response.status_code, 401)
 
 
-class PledgeModelTests(APITestCase):
+class PledgePaperMigrationTests(TransactionTestCase):
+    migrate_from = ("pledges", "0004_remove_pledge_due_date_pledgeeditlog_effective_date_and_more")
+    migrate_to = ("pledges", "0005_pledge_paper_form_fields")
+
     def setUp(self):
+        super().setUp()
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_from])
+        old_apps = executor.loader.project_state([self.migrate_from]).apps
+        BusinessSource = old_apps.get_model("accounts", "BusinessSource")
+        Customer = old_apps.get_model("accounts", "Customer")
+        Pledge = old_apps.get_model("pledges", "Pledge")
+        PledgeItem = old_apps.get_model("pledges", "PledgeItem")
+
         source = BusinessSource.objects.create(
-            name="Model test source",
-            channel_type=BusinessSource.ChannelType.DIRECT,
+            name="Migration source",
+            source_type="INDIVIDUAL",
+            phone="9812345678",
+            address="Old Road",
         )
-        self.customer = Customer.objects.create(
+        customer = Customer.objects.create(name="Migration customer", business_source=source)
+        pledge = Pledge.objects.create(
+            customer=customer,
             business_source=source,
-            name="Model test customer",
+            pledge_date=date(2026, 1, 1),
+            principal_amount=Decimal("1000.00"),
+            upfront_percent=Decimal("2.00"),
+            upfront_days=30,
+            daily_percent=Decimal("2.00"),
+            daily_divisor=30,
         )
-
-    def create_pledge(self, **overrides):
-        fields = {
-            "customer": self.customer,
-            "amount_received": Decimal("100.00"),
-        }
-        fields.update(overrides)
-        return Pledge.objects.create(**fields)
-
-    def test_pledge_number_is_unique_and_stable(self):
-        pledge = self.create_pledge()
-        pledge_number = pledge.pledge_number
-        pledge.amount_received = Decimal("200.00")
-        pledge.save()
-        self.assertEqual(pledge.pledge_number, pledge_number)
-
-        with self.assertRaises(ValidationError):
-            self.create_pledge(pledge_number=pledge_number)
-
-    def test_customer_deletion_is_protected(self):
-        self.create_pledge()
-        with self.assertRaises(ProtectedError):
-            self.customer.delete()
-
-    def test_negative_values_fail_model_validation(self):
-        with self.assertRaises(ValidationError):
-            self.create_pledge(amount_received=Decimal("-1.00"))
-
-        pledge = self.create_pledge()
-        with self.assertRaises(ValidationError):
-            PledgeItem.objects.create(
-                pledge=pledge,
-                description="Invalid weight",
-                weight_grams=Decimal("-0.001"),
-                quantity=1,
-            )
-        with self.assertRaises(ValidationError):
-            PledgeItem.objects.create(
-                pledge=pledge,
-                description="Invalid quantity",
-                weight_grams=Decimal("1.000"),
-                quantity=-1,
-            )
-        with self.assertRaises(ValidationError):
-            PledgeItem.objects.create(
-                pledge=pledge,
-                description="Zero quantity",
-                weight_grams=Decimal("1.000"),
-                quantity=0,
-            )
-
-    def test_quantity_database_constraint_rejects_zero(self):
-        pledge = self.create_pledge()
-        item = PledgeItem.objects.create(
+        self.pledge_id = pledge.pk
+        self.item_id = PledgeItem.objects.create(
             pledge=pledge,
-            description="Valid quantity",
-            weight_grams=Decimal("1.000"),
+            sequence=1,
+            description="Old gold item",
+            weight_grams=Decimal("3.125"),
             quantity=1,
-        )
+        ).pk
 
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                PledgeItem.objects.filter(pk=item.pk).update(quantity=0)
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        super().tearDown()
 
-    def test_nepal_local_default_and_lifecycle_dates(self):
-        utc_now = datetime(2025, 12, 31, 18, 30, tzinfo=datetime_timezone.utc)
+    def test_existing_pledge_and_gram_weight_are_preserved(self):
+        MigrationExecutor(connection).migrate([self.migrate_to])
+        new_apps = MigrationExecutor(connection).loader.project_state([self.migrate_to]).apps
+        Pledge = new_apps.get_model("pledges", "Pledge")
+        PledgeItem = new_apps.get_model("pledges", "PledgeItem")
+        pledge = Pledge.objects.get(pk=self.pledge_id)
+        item = PledgeItem.objects.get(pk=self.item_id)
 
-        with patch("pledges.models.timezone.now", return_value=utc_now):
-            pledge = self.create_pledge()
-
-        self.assertEqual(pledge.pledge_date, date(2026, 1, 1))
-
-        pledge.status = Pledge.Status.REDEEMED
-        with patch("pledges.models.timezone.now", return_value=utc_now):
-            pledge.save()
-        self.assertEqual(pledge.redeemed_date, date(2026, 1, 1))
-
-        cancelled = self.create_pledge(pledge_date=date(2025, 12, 31))
-        cancelled.status = Pledge.Status.CANCELLED
-        with patch("pledges.models.timezone.now", return_value=utc_now):
-            cancelled.save()
-        self.assertEqual(cancelled.cancelled_date, date(2026, 1, 1))
-
-    def test_overdue_uses_controlled_nepal_local_date(self):
-        pledge = self.create_pledge(
-            pledge_date=date(2025, 12, 31),
-            due_date=date(2026, 1, 1),
-        )
-
-        before_nepal_due_date = datetime(2025, 12, 31, 18, 30, tzinfo=datetime_timezone.utc)
-        after_nepal_due_date = datetime(2026, 1, 1, 18, 30, tzinfo=datetime_timezone.utc)
-        with patch("pledges.models.timezone.now", return_value=before_nepal_due_date):
-            self.assertFalse(pledge.is_overdue)
-        with patch("pledges.models.timezone.now", return_value=after_nepal_due_date):
-            self.assertTrue(pledge.is_overdue)
-
-    def test_lifecycle_dates_are_set_and_invalid_transitions_fail(self):
-        pledge = self.create_pledge()
-        pledge.status = Pledge.Status.REDEEMED
-        pledge.save()
-        self.assertEqual(pledge.redeemed_date, nepal_today())
-
-        pledge.status = Pledge.Status.ACTIVE
-        with self.assertRaises(ValidationError):
-            pledge.save()
-
-    def test_cancelled_pledge_records_date(self):
-        pledge = self.create_pledge()
-        pledge.status = Pledge.Status.CANCELLED
-        pledge.save()
-        self.assertEqual(pledge.cancelled_date, nepal_today())
-
-    def test_lifecycle_date_is_saved_with_limited_update_fields(self):
-        pledge = self.create_pledge()
-        pledge.status = Pledge.Status.REDEEMED
-        pledge.save(update_fields={"status"})
-        pledge.refresh_from_db()
-
-        self.assertEqual(pledge.status, Pledge.Status.REDEEMED)
-        self.assertEqual(pledge.redeemed_date, nepal_today())
+        self.assertEqual(pledge.customer_name, "Migration customer")
+        self.assertEqual(pledge.address, "Old Road")
+        self.assertEqual(pledge.phone, "9812345678")
+        self.assertEqual(item.particulars, "Old gold item")
+        self.assertEqual(item.weight, Decimal("3.125"))
+        self.assertEqual(item.unit, "GRAM")
+        self.assertEqual(item.jor, Decimal("1.000"))

@@ -2,6 +2,8 @@ import uuid
 from decimal import Decimal
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -9,6 +11,12 @@ from django.utils import timezone
 class Role(models.TextChoices):
     ADMIN = "Admin", "Admin"
     # Add Member, Editor later — CharField needs no schema change for new values.
+
+
+BUSINESS_SOURCE_TERM_PRESETS = {
+    "INDIVIDUAL": (Decimal("2.00"), 30, Decimal("2.00"), 30),
+    "COMPANY": (Decimal("1.00"), 15, Decimal("2.00"), 30),
+}
 
 
 class UserManager(BaseUserManager):
@@ -162,6 +170,30 @@ class BusinessSource(models.Model):
     days = models.PositiveIntegerField(null=True, blank=True)
     monthly_interest_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     interest_credit_basis = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    upfront_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("100.00"))],
+    )
+    upfront_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    daily_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.00")), MaxValueValidator(Decimal("100.00"))],
+    )
+    daily_divisor = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+    )
     channel_type = models.CharField(
         max_length=20,
         choices=ChannelType.choices,
@@ -199,6 +231,56 @@ class BusinessSource(models.Model):
             return self.InterestType.PERCENTAGE, self.monthly_interest_amount, self.interest_credit_basis, 30
         period_days = 15 if self.source_type == self.Type.COMPANY else 30
         return self.InterestType.PERCENTAGE, Decimal("2000.00"), Decimal("100000.00"), period_days
+
+    def pledge_terms(self):
+        preset = BUSINESS_SOURCE_TERM_PRESETS.get(self.source_type)
+        if preset is not None:
+            return preset
+        terms = (
+            self.upfront_percent,
+            self.upfront_days,
+            self.daily_percent,
+            self.daily_divisor,
+        )
+        return terms if all(value is not None for value in terms) else None
+
+
+class BusinessSourceTermEditLogQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise ValidationError("Business Source edit logs are append-only.")
+
+    def delete(self):
+        raise ValidationError("Business Source edit logs are append-only.")
+
+
+class BusinessSourceTermEditLog(models.Model):
+    source = models.ForeignKey(BusinessSource, on_delete=models.PROTECT, related_name="term_edit_logs")
+    edit_id = models.UUIDField(default=uuid.uuid4, db_index=True)
+    field = models.CharField(max_length=64)
+    old_value = models.TextField()
+    new_value = models.TextField()
+    changed_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="business_source_term_edits")
+    changed_at = models.DateTimeField(auto_now_add=True)
+    reason = models.CharField(max_length=500)
+    objects = BusinessSourceTermEditLogQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-changed_at", "-id"]
+
+    def clean(self):
+        super().clean()
+        self.reason = self.reason.strip()
+        if len(self.reason) < 5:
+            raise ValidationError({"reason": "Reason must contain at least 5 non-space characters."})
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValidationError("Business Source edit logs are append-only.")
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Business Source edit logs are append-only.")
 
 
 class Customer(models.Model):

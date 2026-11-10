@@ -7,66 +7,42 @@ import Select from "@/components/select/Select";
 import { useToast } from "@/components/toast/ToastProvider";
 import { userFacingError } from "@/lib/user-facing-error";
 import {
-  CHANNEL_OPTIONS,
   CUSTOMER_TYPE_LABELS,
   CUSTOMER_TYPES,
-  type BusinessSource,
-  type ChannelType,
   type Customer,
   type CustomerType,
-  createCustomer,
   fetchBusinessSources,
   isValidContactEmail,
   updateCustomer,
 } from "@/lib/business-data";
 
 export default function CustomerDialog({
-  sources,
-  initialSourceId,
-  initialType = "INDIVIDUAL",
   customer,
   onClose,
   onCreated,
 }: {
-  sources?: BusinessSource[];
-  initialSourceId?: number;
-  initialType?: CustomerType;
-  customer?: Customer;
+  customer: Customer;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [availableSources, setAvailableSources] = useState(sources ?? []);
-  const [sourceLoading, setSourceLoading] = useState(sources === undefined);
+  const [availableSources, setAvailableSources] = useState<Awaited<ReturnType<typeof fetchBusinessSources>>>([]);
+  const [sourceLoading, setSourceLoading] = useState(true);
   const [sourceError, setSourceError] = useState("");
-  const [sourceMode, setSourceMode] = useState<"existing" | "new">(
-    customer || initialSourceId !== undefined || (sources?.length ?? 0) > 0
-      ? "existing"
-      : "new"
-  );
   const [name, setName] = useState(customer?.name ?? "");
   const [phone, setPhone] = useState(customer?.phone ?? "");
   const [email, setEmail] = useState(customer?.email ?? "");
-  const [sourceId, setSourceId] = useState(
-    String(customer?.business_source ?? initialSourceId ?? sources?.[0]?.id ?? "")
-  );
-  const [customerType, setCustomerType] = useState<CustomerType>(
-    customer?.customer_type ?? initialType
-  );
+  const [sourceId, setSourceId] = useState(String(customer.business_source ?? ""));
+  const [customerType, setCustomerType] = useState<CustomerType>(customer.customer_type);
   const [interestAmount, setInterestAmount] = useState(
-    customer?.monthly_interest_amount ?? "2000.00"
+    customer.monthly_interest_amount ?? "2000.00"
   );
   const [creditBasis, setCreditBasis] = useState(
-    customer?.interest_credit_basis ?? "100000.00"
+    customer.interest_credit_basis ?? "100000.00"
   );
-  const [newSourceName, setNewSourceName] = useState("");
-  const [newChannelType, setNewChannelType] = useState<ChannelType>("DIRECT");
-  const [newSourceDescription, setNewSourceDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
-    if (sources !== undefined) return;
-
     let current = true;
     fetchBusinessSources()
       .then((data) => {
@@ -85,7 +61,7 @@ export default function CustomerDialog({
     return () => {
       current = false;
     };
-  }, [sources]);
+  }, []);
 
   const selectedSource = availableSources.find(
     (source) => String(source.id) === sourceId
@@ -103,47 +79,25 @@ export default function CustomerDialog({
         email: email.trim(),
       };
 
-      if (customer) {
-        await updateCustomer(customer.id, {
-          ...customerDetails,
-          customer_type: effectiveType,
-          business_source: selectedSource?.id ?? null,
-          ...(effectiveType === "DYNAMIC" && !selectedSource
-            ? {
-                monthly_interest_amount: interestAmount,
-                interest_credit_basis: creditBasis,
-              }
-            : {}),
-        });
-      } else if (sourceMode === "existing") {
-        await createCustomer({
-          ...customerDetails,
-          customer_type: effectiveType,
-          business_source: Number(sourceId),
-        });
-      } else {
-        await createCustomer({
-          ...customerDetails,
-          new_business_source: {
-            name: newSourceName.trim(),
-            channel_type: newChannelType,
-            description: newSourceDescription.trim(),
-          },
-        });
-      }
+      await updateCustomer(customer.id, {
+        ...customerDetails,
+        customer_type: effectiveType,
+        business_source: selectedSource?.id ?? null,
+        ...(effectiveType === "DYNAMIC" && !selectedSource
+          ? {
+              monthly_interest_amount: interestAmount,
+              interest_credit_basis: creditBasis,
+            }
+          : {}),
+      });
 
-      toast.success(
-        customer
-          ? `Customer "${customerDetails.name}" updated.`
-          : `Customer "${customerDetails.name}" added.`,
-        { icon: UserPlus }
-      );
+      toast.success(`Customer "${customerDetails.name}" updated.`, { icon: UserPlus });
       onCreated();
     } catch (requestError) {
       toast.error(
         userFacingError(
           requestError,
-          customer ? "Could not update the customer." : "Could not create the customer."
+          "Could not update the customer."
         )
       );
     } finally {
@@ -158,8 +112,8 @@ export default function CustomerDialog({
       <section className="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-labelledby="customer-dialog-title">
         <div className="modal-heading">
           <div>
-            <p className="eyebrow">{customer ? "CUSTOMER RECORD" : "NEW RECORD"}</p>
-            <h2 id="customer-dialog-title">{customer ? "Edit customer" : "Add customer"}</h2>
+            <p className="eyebrow">CUSTOMER RECORD</p>
+            <h2 id="customer-dialog-title">Edit customer</h2>
           </div>
           <button className="icon-button" type="button" aria-label="Close dialog" onClick={onClose}>×</button>
         </div>
@@ -182,68 +136,21 @@ export default function CustomerDialog({
             </label>
           </div>
 
-          {!customer && <div className="form-field">
-            <span>Business source category <b>*</b></span>
-            <div className="segmented-control" role="group" aria-label="Business source category choice">
-              <button
-                type="button"
-                className={sourceMode === "existing" ? "segment-active" : ""}
-                aria-pressed={sourceMode === "existing"}
-                disabled={availableSources.length === 0}
-                onClick={() => setSourceMode("existing")}
-              >
-                Existing source
-              </button>
-              <button
-                type="button"
-                className={sourceMode === "new" ? "segment-active" : ""}
-                aria-pressed={sourceMode === "new"}
-                onClick={() => setSourceMode("new")}
-              >
-                New source category
-              </button>
-            </div>
-          </div>}
+          <div className="form-field">
+            <span id="customer-source-label">Select source (optional)</span>
+            <Select
+              aria-labelledby="customer-source-label"
+              value={sourceId}
+              disabled={sourceLoading}
+              options={[
+                { value: "", label: "No linked business source" },
+                ...availableSources.map((source) => ({ value: String(source.id), label: source.name })),
+              ]}
+              onChange={setSourceId}
+            />
+          </div>
 
-          {sourceMode === "existing" ? (
-            <div className="form-field">
-              <span id="customer-source-label">Select source {customer ? "(optional)" : <b>*</b>}</span>
-              <Select
-                aria-labelledby="customer-source-label"
-                value={sourceId}
-                disabled={sourceLoading}
-                options={[
-                  ...(customer ? [{ value: "", label: "No linked business source" }] : []),
-                  ...availableSources.map((source) => ({ value: String(source.id), label: source.name })),
-                ]}
-                onChange={setSourceId}
-              />
-            </div>
-          ) : (
-            <>
-              <div className="form-grid">
-                <label className="form-field">
-                  <span>New source name <b>*</b></span>
-                  <input required maxLength={255} value={newSourceName} onChange={(event) => setNewSourceName(event.target.value)} placeholder="e.g. Instagram Campaign" />
-                </label>
-                <div className="form-field">
-                  <span id="customer-channel-label">Channel type <b>*</b></span>
-                  <Select
-                    aria-labelledby="customer-channel-label"
-                    value={newChannelType}
-                    options={CHANNEL_OPTIONS}
-                    onChange={setNewChannelType}
-                  />
-                </div>
-              </div>
-              <label className="form-field">
-                <span>Description</span>
-                <textarea rows={2} value={newSourceDescription} onChange={(event) => setNewSourceDescription(event.target.value)} />
-              </label>
-            </>
-          )}
-
-          {customer && !selectedSource && (
+          {!selectedSource && (
             <>
               <div className="form-field">
                 <span id="customer-type-label">Customer type <b>*</b></span>
@@ -276,8 +183,8 @@ export default function CustomerDialog({
 
           <div className="modal-actions">
             <button className="button button-secondary" type="button" onClick={onClose}>Cancel</button>
-            <button className="button button-primary" type="submit" disabled={submitting || (sourceMode === "existing" && !sourceId)}>
-              {submitting ? "Saving..." : customer ? "Save changes" : "Save customer"}
+            <button className="button button-primary" type="submit" disabled={submitting || sourceLoading || Boolean(sourceError)}>
+              {submitting ? "Saving..." : "Save changes"}
             </button>
           </div>
         </form>

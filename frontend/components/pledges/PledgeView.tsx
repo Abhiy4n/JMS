@@ -7,18 +7,18 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import BusinessAppShell from "@/components/BusinessAppShell";
 import PledgePaperForm from "@/app/pledges/[id]/form/PledgePaperForm";
 import { useToast } from "@/components/toast/ToastProvider";
-import { closePledge, getPledge, type Pledge, type PledgeStatus } from "@/lib/pledge-data";
+import { closePledge, getPledge, type Pledge } from "@/lib/pledge-data";
 import { userFacingError } from "@/lib/user-facing-error";
 
-const STATUS_LABELS: Record<PledgeStatus, string> = {
-  ACTIVE: "Active",
-  REDEEMED: "Redeemed",
-  CANCELLED: "Cancelled",
-};
+const STATUS_LABELS = {
+  ACTIVE: "सक्रिय",
+  CLOSED: "बन्द",
+  FORFEITED: "जफत",
+} as const;
 
 export default function PledgeView() {
   return (
-    <Suspense fallback={<BusinessAppShell><p className="detail-loading">Loading Pledge details...</p></BusinessAppShell>}>
+    <Suspense fallback={<BusinessAppShell><p className="detail-loading">भाखा पत्र विवरण लोड हुँदैछ…</p></BusinessAppShell>}>
       <PledgeDetail />
     </Suspense>
   );
@@ -34,7 +34,7 @@ function PledgeDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
-  const [closingStatus, setClosingStatus] = useState<Exclude<PledgeStatus, "ACTIVE"> | null>(null);
+  const [closing, setClosing] = useState(false);
   const shownSaveToast = useRef("");
   const actionLock = useRef(false);
   const pledgeId = Number(id);
@@ -60,7 +60,7 @@ function PledgeDetail() {
         if (current) {
           setPledge(null);
           setLoadedKey(requestKey);
-          setError(userFacingError(requestError, "Could not load this Pledge. Please try again."));
+          setError(userFacingError(requestError, "भाखा पत्र लोड गर्न सकिएन।"));
         }
       })
       .finally(() => {
@@ -70,7 +70,7 @@ function PledgeDetail() {
     return () => { current = false; };
   }, [pledgeId, validId, requestKey]);
 
-  const loadError = validId ? (loadedKey === requestKey ? error : "") : "This Pledge record could not be found.";
+  const loadError = validId ? (loadedKey === requestKey ? error : "") : "भाखा पत्र भेटिएन।";
   const currentPledge = loadedKey === requestKey ? pledge : null;
   const isLoading = validId && !loadError && (loading || !currentPledge);
 
@@ -84,35 +84,36 @@ function PledgeDetail() {
     if (!toastKey || shownSaveToast.current === toastKey) return;
 
     shownSaveToast.current = toastKey;
-    toast.success(created ? "Pledge created successfully." : "Pledge changes saved successfully.");
+    toast.success(created ? "भाखा पत्र बनाइयो।" : "भाखा पत्रका विवरण सुरक्षित गरियो।");
   }, [created, currentPledge, revision, toast, updated]);
 
-  async function handleClose(status: Exclude<PledgeStatus, "ACTIVE">) {
-    if (!currentPledge || currentPledge.status !== "ACTIVE" || actionLock.current) return;
-    const action = status === "REDEEMED" ? "Redeem" : "Cancel";
-    if (!window.confirm(
-      `${action} Pledge ${currentPledge.pledge_number}?\n\nThis will mark the Pledge as ${STATUS_LABELS[status].toLowerCase()}. It will remain in the records and can no longer be edited or reopened.`
-    )) return;
+  async function handleClose() {
+    if (
+      !currentPledge
+      || currentPledge.status !== "ACTIVE"
+      || currentPledge.calculation.total_outstanding !== "0.00"
+      || actionLock.current
+    ) return;
+    if (!window.confirm(`भाखा पत्र ${currentPledge.pledge_number} बन्द गर्ने?`)) return;
 
     const recordId = currentPledge.id;
     actionLock.current = true;
-    setClosingStatus(status);
+    setClosing(true);
     try {
-      const updatedPledge = await closePledge(recordId, status);
+      const updatedPledge = await closePledge(recordId);
       setPledge((current) => current?.id === recordId ? updatedPledge : current);
-      toast.success(`Pledge ${STATUS_LABELS[updatedPledge.status].toLowerCase()} successfully.`);
+      toast.success("भाखा पत्र बन्द गरियो।");
     } catch (requestError) {
-      toast.error(userFacingError(requestError, `Could not ${action.toLowerCase()} this Pledge. Please try again.`));
-      // Another session may have closed the record, or the response may have been lost.
+      toast.error(userFacingError(requestError, "भाखा पत्र बन्द गर्न सकिएन।"));
       try {
         const latestPledge = await getPledge(recordId);
         setPledge((current) => current?.id === recordId ? latestPledge : current);
       } catch {
-        // Keep the existing record and the original action error if reloading fails.
+        // Keep the existing record and original action error if reload fails.
       }
     } finally {
       actionLock.current = false;
-      setClosingStatus(null);
+      setClosing(false);
     }
   }
 
@@ -120,34 +121,35 @@ function PledgeDetail() {
     <BusinessAppShell>
       <section className="page-heading pledge-detail-heading">
         <div>
-          <p className="eyebrow">PLEDGE MANAGEMENT</p>
-          <h1>Nepali Pledge Form</h1>
-          {currentPledge && <p className="page-description">Pledge record: <strong>{currentPledge.pledge_number}</strong></p>}
+          <p className="eyebrow">भाखा पत्र</p>
+          <h1>भाखा पत्र</h1>
+          {currentPledge && <p className="page-description">दर्ता नं.: <strong>{currentPledge.pledge_number}</strong></p>}
           {currentPledge && (
             <div className="pledge-detail-status-line">
               <span className={`status-badge status-${currentPledge.status.toLowerCase()}`}>
                 {STATUS_LABELS[currentPledge.status]}
               </span>
-              <span className="status-badge">{currentPledge.financial_status.replaceAll("_", " ")}</span>
-              {currentPledge.is_overdue && <span className="pledge-overdue-badge">Overdue</span>}
             </div>
           )}
         </div>
         <div className="pledge-detail-actions">
-          <Link className="button button-secondary" href="/pledges">Back to Pledge Records</Link>
+          <Link className="button button-secondary" href="/pledges">भाखा पत्र सूची</Link>
           {currentPledge?.status === "ACTIVE" && (
             <>
-              {closingStatus ? (
-                <button className="button button-primary" type="button" disabled>Edit Pledge</button>
-              ) : (
-                <Link className="button button-primary" href={`/pledges/${currentPledge.id}/edit`}>Edit Pledge</Link>
+              {currentPledge.payments.length === 0 && (
+                closing ? (
+                  <button className="button button-primary" type="button" disabled>खुल्दैछ…</button>
+                ) : (
+                  <Link className="button button-primary" href={`/pledges/${currentPledge.id}/edit`}>सच्याउनुहोस्</Link>
+                )
               )}
-              <button className="button button-secondary" type="button" disabled={Boolean(closingStatus) || currentPledge.financial_status !== "PAID"} title={currentPledge.financial_status === "PAID" ? "Release collateral" : "Settle principal and interest before redemption"} onClick={() => handleClose("REDEEMED")}>
-                {closingStatus === "REDEEMED" ? "Redeeming..." : "Redeem Pledge"}
-              </button>
-              <button className="button button-danger-outline" type="button" disabled={Boolean(closingStatus) || Boolean(currentPledge.credit_id)} title={currentPledge.credit_id ? "Accounting reversal is not available for linked Pledges" : undefined} onClick={() => handleClose("CANCELLED")}>
-                {closingStatus === "CANCELLED" ? "Cancelling..." : "Cancel Pledge"}
-              </button>
+              <button
+                className="button button-secondary"
+                type="button"
+                disabled={closing || currentPledge.calculation.total_outstanding !== "0.00"}
+                title={currentPledge.calculation.total_outstanding === "0.00" ? undefined : "बाँकी रकम शून्य भएपछि मात्र बन्द गर्न सकिन्छ।"}
+                onClick={handleClose}
+              >{closing ? "बन्द हुँदैछ…" : "भाखा पत्र बन्द गर्नुहोस्"}</button>
             </>
           )}
         </div>
@@ -155,35 +157,27 @@ function PledgeDetail() {
 
       {currentPledge && currentPledge.status !== "ACTIVE" && (
         <p className="notice pledge-readonly-notice" role="status">
-          This Pledge is {STATUS_LABELS[currentPledge.status].toLowerCase()} and can no longer be edited.
+          यो भाखा पत्र {STATUS_LABELS[currentPledge.status]} भएकाले सच्याउन मिल्दैन।
         </p>
       )}
 
-      {currentPledge?.credit_calculation && (
-        <section className="credit-summary-grid" aria-label="Pledge Credit balance">
-          <div><span>Total days</span><strong>{currentPledge.elapsed_days}</strong><small>Since Pledge date</small></div>
-          <div><span>Principal due</span><strong>NPR {currentPledge.credit_calculation.principal_due}</strong></div>
-          <div><span>Interest due</span><strong>NPR {currentPledge.credit_calculation.interest_due}</strong></div>
-          <div><span>Total due</span><strong>NPR {currentPledge.credit_calculation.total_due}</strong></div>
-          <Link className="button button-secondary" href="/accounts/bills">Open in Accounts → Bills</Link>
+      {currentPledge && (
+        <section className="credit-summary-grid" aria-label="बाँकी रकम">
+          <div><span>बाँकी साँवा</span><strong>रु. {currentPledge.calculation.outstanding_principal}</strong></div>
+          <div><span>बाँकी ब्याज</span><strong>रु. {currentPledge.calculation.unpaid_interest}</strong></div>
+          <div><span>जम्मा बाँकी</span><strong>रु. {currentPledge.calculation.total_outstanding}</strong></div>
         </section>
       )}
 
       {isLoading ? (
-        <p className="detail-loading" role="status">Loading Pledge details...</p>
+        <p className="detail-loading" role="status">भाखा पत्र विवरण लोड हुँदैछ…</p>
       ) : loadError ? (
         <div className="pledge-error-row">
           <p className="notice notice-error" role="alert">{loadError}</p>
-          {validId && <button className="button button-secondary button-small" type="button" onClick={() => { setLoading(true); setError(""); setReloadKey((key) => key + 1); }}>Retry</button>}
+          {validId && <button className="button button-secondary button-small" type="button" onClick={() => { setLoading(true); setError(""); setReloadKey((key) => key + 1); }}>फेरि प्रयास गर्नुहोस्</button>}
         </div>
       ) : currentPledge ? (
-        <div>
-          <p className="page-description">
-            Use this view to copy saved details onto the paper form. Blank spaces are for manual completion on paper.
-            Dates use Gregorian (AD) YYYY-MM-DD; weights are grams. Scroll the paper sideways on small screens.
-          </p>
-          <PledgePaperForm pledge={currentPledge} />
-        </div>
+        <PledgePaperForm pledge={currentPledge} />
       ) : null}
     </BusinessAppShell>
   );

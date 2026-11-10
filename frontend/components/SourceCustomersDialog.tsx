@@ -8,8 +8,8 @@ import { useDialog } from "@/lib/use-dialog";
 import Select from "@/components/select/Select";
 import { useToast } from "@/components/toast/ToastProvider";
 
-export default function SourceCustomersDialog({ source, onClose, onChanged, onAddCustomer }: {
-  source: BusinessSource; onClose: () => void; onChanged: () => void; onAddCustomer: () => void;
+export default function SourceCustomersDialog({ source, onClose, onChanged }: {
+  source: BusinessSource; onClose: () => void; onChanged: () => void;
 }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [available, setAvailable] = useState<Customer[]>([]);
@@ -61,7 +61,6 @@ export default function SourceCustomersDialog({ source, onClose, onChanged, onAd
       </div>}
       {!loading && !error && available.length > 0 && <div className="form-stack"><div className="form-field"><span id="link-customer-label">Link an existing customer</span><Select aria-labelledby="link-customer-label" disabled={saving} value={customerId} options={[{ value: "", label: "Select customer" }, ...available.map((customer) => ({ value: String(customer.id), label: customer.name }))]} onChange={setCustomerId} /></div>
         <button className="button button-secondary" type="button" disabled={!customerId || saving} onClick={linkCustomer}>{saving ? "Linking..." : "Link customer"}</button></div>}
-      <div className="modal-actions"><button className="button button-primary" type="button" disabled={saving} onClick={onAddCustomer}>Add customer</button></div>
     </section>
   </div>;
 }

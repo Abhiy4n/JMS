@@ -12,8 +12,14 @@ class BusinessSourceCustomerLinkTests(APITestCase):
             password="test-password-123",
         )
         self.client.force_authenticate(user=self.user)
+        self.admin = User.objects.create_superuser(
+            email="source-admin@example.com",
+            name="Source admin",
+            password="test-pass",
+        )
 
     def test_creating_source_also_creates_its_first_customer(self):
+        self.client.force_authenticate(user=self.admin)
         response = self.client.post(
             reverse("business-source-list"),
             {
@@ -30,13 +36,14 @@ class BusinessSourceCustomerLinkTests(APITestCase):
             },
             format="json",
         )
+        self.client.force_authenticate(user=self.user)
 
         self.assertEqual(response.status_code, 201, response.data)
         source = BusinessSource.objects.get(name="Walk-in Customer")
         customer = Customer.objects.get(name="Asha Rai")
         self.assertEqual(customer.business_source, source)
         self.assertEqual(response.data["customer_count"], 2)  # Source entry and explicitly supplied contact.
-        self.assertEqual(source.created_by, self.user)
+        self.assertEqual(source.created_by, self.admin)
 
     def test_customer_creation_updates_source_count_and_detail_list(self):
         source = BusinessSource.objects.create(
@@ -68,6 +75,7 @@ class BusinessSourceCustomerLinkTests(APITestCase):
         self.assertEqual(customer_response.data[0]["source_name"], "Facebook")
 
     def test_customer_creation_can_create_a_new_source_category(self):
+        self.client.force_authenticate(user=self.admin)
         response = self.client.post(
             reverse("customer-list"),
             {
@@ -83,11 +91,12 @@ class BusinessSourceCustomerLinkTests(APITestCase):
             },
             format="json",
         )
+        self.client.force_authenticate(user=self.user)
 
         self.assertEqual(response.status_code, 201, response.data)
         customer = Customer.objects.get(name="Mina Karki")
         self.assertEqual(customer.business_source.name, "Instagram Campaign")
-        self.assertEqual(customer.business_source.created_by, self.user)
+        self.assertEqual(customer.business_source.created_by, self.admin)
 
     def test_customer_creation_no_longer_requires_a_source(self):
         response = self.client.post(
@@ -122,6 +131,7 @@ class BusinessSourceCustomerLinkTests(APITestCase):
                 self.assertFalse(Customer.objects.filter(name="Invalid Contact").exists())
 
     def test_business_source_api_applies_same_contact_validation(self):
+        self.client.force_authenticate(user=self.admin)
         response = self.client.post(
             reverse("business-source-list"),
             {
@@ -136,6 +146,7 @@ class BusinessSourceCustomerLinkTests(APITestCase):
             },
             format="json",
         )
+        self.client.force_authenticate(user=self.user)
 
         self.assertEqual(response.status_code, 400, response.data)
         self.assertFalse(BusinessSource.objects.filter(name="Invalid Source Contact").exists())

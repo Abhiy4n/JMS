@@ -14,11 +14,16 @@ class CustomerFolioTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(email="folio@example.com", name="Folio", password="test-password-123")
         self.client.force_authenticate(self.user)
+        self.admin = User.objects.create_superuser(email="folio-admin@example.com", name="Folio admin", password="test-pass")
 
     def source(self, **overrides):
         data = dict(name="Source entry", source_type="INDIVIDUAL", phone="9800000000", address="Kathmandu")
         data.update(overrides)
+        if data["source_type"] == "DYNAMIC":
+            data.update(upfront_percent="2.00", upfront_days=30, daily_percent="2.00", daily_divisor=30)
+        self.client.force_authenticate(self.admin)
         response = self.client.post(reverse("business-source-list"), data, format="json")
+        self.client.force_authenticate(self.user)
         self.assertEqual(response.status_code, 201, response.data)
         return BusinessSource.objects.get(pk=response.data["id"])
 
@@ -61,8 +66,10 @@ class CustomerFolioTests(APITestCase):
         self.assertEqual(customer.business_source_id, source.pk)
         for _ in range(3):
             self.assertEqual(self.client.get(reverse("customer-list")).status_code, 200)
+        self.client.force_authenticate(self.admin)
         response = self.client.patch(reverse("business-source-detail", args=[source.pk]),
                                      {"name": "Updated source", "phone": "9811111111"}, format="json")
+        self.client.force_authenticate(self.user)
         self.assertEqual(response.status_code, 200, response.data)
         customer.refresh_from_db()
         self.assertEqual(customer.name, "Updated source")
@@ -72,6 +79,40 @@ class CustomerFolioTests(APITestCase):
         independent_edit = self.client.patch(reverse("customer-detail", args=[customer.pk]), {"name": "Inconsistent"}, format="json")
         self.assertEqual(independent_edit.status_code, 400)
 
+    def test_only_superusers_can_create_edit_deactivate_or_delete_business_sources(self):
+        source = self.source()
+        detail = reverse("business-source-detail", args=[source.pk])
+
+        rejected_create = self.client.post(
+            reverse("business-source-list"),
+            {"name": "Unauthorized source", "source_type": "INDIVIDUAL"},
+            format="json",
+        )
+        self.assertEqual(rejected_create.status_code, 403)
+        self.assertEqual(self.client.patch(detail, {"name": "Unauthorized edit"}).status_code, 403)
+        self.assertEqual(self.client.patch(detail, {"status": "INACTIVE"}).status_code, 403)
+        self.assertEqual(self.client.delete(detail).status_code, 403)
+
+        rejected_inline_create = self.client.post(
+            reverse("customer-list"),
+            {
+                "name": "Unauthorized contact",
+                "new_business_source": {
+                    "name": "Unauthorized inline source",
+                    "source_type": "INDIVIDUAL",
+                    "channel_type": BusinessSource.ChannelType.OTHER,
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(rejected_inline_create.status_code, 403, rejected_inline_create.data)
+        source.refresh_from_db()
+        self.assertEqual(source.name, "Source entry")
+        self.assertEqual(source.status, BusinessSource.Status.ACTIVE)
+        self.assertFalse(BusinessSource.objects.filter(name="Unauthorized source").exists())
+        self.assertFalse(BusinessSource.objects.filter(name="Unauthorized inline source").exists())
+        self.assertFalse(Customer.objects.filter(name="Unauthorized contact").exists())
+
     def test_dynamic_source_customer_can_be_deactivated_without_legacy_credit_terms(self):
         source = self.source(source_type="DYNAMIC", interest_type="PERCENTAGE", interest_percentage="2.5", days=30)
         customer = source.customer_entry
@@ -79,7 +120,9 @@ class CustomerFolioTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertFalse(response.data["is_active"])
         self.assertEqual(self.client.delete(reverse("customer-detail", args=[customer.pk])).status_code, 409)
+        self.client.force_authenticate(self.admin)
         self.assertEqual(self.client.delete(reverse("business-source-detail", args=[source.pk])).status_code, 409)
+        self.client.force_authenticate(self.user)
 
     def test_backfill_reuses_linked_ids_preserves_contacts_and_is_idempotent(self):
         source = BusinessSource.objects.create(name="Legacy source")
@@ -103,6 +146,7 @@ class CustomerFolioTests(APITestCase):
             Customer.objects.create(name="Duplicate", business_source=source, source_entry=source)
 
     def test_legacy_inline_source_creation_preserves_the_explicit_contact(self):
+        self.client.force_authenticate(self.admin)
         response = self.client.post(reverse("customer-list"), {
             "name": "Separate contact",
             "new_business_source": {
@@ -110,6 +154,7 @@ class CustomerFolioTests(APITestCase):
                 "market_segment": "Retail", "phone": "9800000000",
             },
         }, format="json")
+        self.client.force_authenticate(self.user)
         self.assertEqual(response.status_code, 201, response.data)
         source = BusinessSource.objects.get(name="Inline source")
         self.assertEqual(source.customer_entry.name, "Inline source")

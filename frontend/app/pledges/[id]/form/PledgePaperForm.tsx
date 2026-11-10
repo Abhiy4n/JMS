@@ -1,17 +1,27 @@
 import type { Pledge } from "@/lib/pledge-data";
+import { toNepaliCurrencyWords } from "@/lib/nepali-currency-words.js";
 import type { ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import styles from "./pledge-paper-form.module.css";
 
-type PaperPledge = Pick<Pledge, "customer_name" | "pledge_date" | "amount_received" | "due_date" | "items">;
+type PaperPledge = Pick<
+  Pledge,
+  "written_text" | "customer_name" | "address" | "phone" | "principal_amount" |
+  "pledge_date" | "due_date" | "items"
+>;
 type PaperControls = {
-  customer: ReactNode;
-  amountReceived: ReactNode;
+  writtenText: ReactNode;
+  customerName: ReactNode;
+  address: ReactNode;
+  phone: ReactNode;
+  principalAmount: ReactNode;
   pledgeDate: ReactNode;
   dueDate: ReactNode;
-  itemDescription: (index: number) => ReactNode;
+  itemParticulars: (index: number) => ReactNode;
   itemWeight: (index: number) => ReactNode;
-  itemQuantity: (index: number) => ReactNode;
+  itemUnit: (index: number) => ReactNode;
+  itemGhat: (index: number) => ReactNode;
+  itemJor: (index: number) => ReactNode;
   addItem: () => void;
   removeItem: (index: number) => void;
   itemActionsDisabled: boolean;
@@ -24,48 +34,75 @@ type PaperFormProps = { pledge: PaperPledge } & (
 function Blank({ label }: { label: string }) {
   return (
     <span className={styles.blank}>
-      <span className={styles.screenReaderOnly}>{label}: कागजमा भर्न खाली ठाउँ</span>
+      <span className={styles.screenReaderOnly}>{label}: खाली</span>
       {"\u00a0"}
     </span>
   );
 }
 
+function FieldValue({ label, value }: { label: string; value: string }) {
+  return value ? <span className={styles.value}>{value}</span> : <Blank label={label} />;
+}
+
+const UNIT_LABELS = {
+  TOLA: "तोला",
+  LAAL: "लाल",
+  GRAM: "ग्राम",
+} as const;
+
 export default function PledgePaperForm({ pledge, mode = "view", controls }: PaperFormProps) {
+  const amountWords = toNepaliCurrencyWords(pledge.principal_amount);
   return (
-    <div className={styles.viewport} role="region" aria-label="Nepali Pledge form; scroll horizontally if needed" tabIndex={0}>
+    <div className={styles.viewport} role="region" aria-label="भाखा पत्र" tabIndex={0}>
       <article className={styles.sheet} lang="ne" data-mode={mode} aria-labelledby="nepali-pledge-form-title">
         <h2 id="nepali-pledge-form-title" className={styles.title}>भाखा पत्र</h2>
 
+        <div className={styles.writtenField}>
+          <span>लिखितम् :</span>
+          {controls ? controls.writtenText : <FieldValue label="लिखितम्" value={pledge.written_text} />}
+        </div>
         <div className={styles.partyGrid}>
-          <div className={styles.field}><span>जिल्ला</span><Blank label="जिल्ला" /></div>
-          <div className={styles.field}>
-            <span>कारोबारी</span>
-            {controls ? <div className={styles.control}>{controls.customer}</div> : pledge.customer_name ? <span className={styles.value}>{pledge.customer_name}</span> : <Blank label="कारोबारी" />}
+          <div className={`${styles.field} ${styles.address}`}>
+            <span>जिल्ला</span>
+            {controls ? controls.address : <FieldValue label="जिल्ला" value={pledge.address} />}
           </div>
-          <div className={`${styles.field} ${styles.address}`}><span>ठेगाना</span><Blank label="ठेगाना" /></div>
+          <div className={styles.field}>
+            <span>बस्ने</span>
+            {controls ? controls.customerName : <FieldValue label="बस्ने" value={pledge.customer_name} />}
+          </div>
         </div>
 
-        {/* Reserve the paper's declaration area without inventing its unclear wording. */}
         <div className={styles.reservedText} aria-hidden="true" />
 
         <div className={styles.sectionHeading}>
           <h3>तपसिल</h3>
-          {/* The API has a JMS identifier, but no separate paper serial number. */}
-          <div className={styles.paperSerial}>
-            <span className={styles.screenReaderOnly}>कागजी क्रमाङ्कको लागि खाली ठाउँ</span>
-          </div>
         </div>
 
         <div className={styles.terms}>
           <div className={styles.amount}>
-            <div>लिएको रकम</div>
-            <div className={styles.field}><span>रु.</span>{controls ? <div className={styles.control}>{controls.amountReceived}</div> : <span className={styles.value}>{pledge.amount_received}</span>}</div>
+            <div className={styles.field}>
+              <span>लिएको रकम रु.</span>
+              {controls ? controls.principalAmount : <FieldValue label="लिएको रकम" value={pledge.principal_amount} />}
+            </div>
+            <div className={styles.field}>
+              <span>अङ्कमा</span>
+              <output className={styles.amountWords} aria-live={controls ? "polite" : undefined}>
+                {amountWords || <Blank label="रकम अक्षरमा" />}
+              </output>
+            </div>
           </div>
           <div className={styles.dates}>
-            <div className={styles.field}><span>मिति :</span>{controls ? <div className={styles.control}>{controls.pledgeDate}</div> : <span className={styles.value}>{pledge.pledge_date}</span>}</div>
             <div className={styles.field}>
-              <span>भाका</span>
-              {controls ? <div className={styles.control}>{controls.dueDate}</div> : pledge.due_date ? <span className={styles.value}>{pledge.due_date}</span> : <Blank label="भाका" />}
+              <span>राखेको मिति</span>
+              {controls ? controls.pledgeDate : <FieldValue label="राखेको मिति" value={pledge.pledge_date} />}
+            </div>
+            <div className={styles.field}>
+              <span>सावा ब्याज बुझाउने भाका</span>
+              {controls
+                ? controls.dueDate
+                : pledge.due_date
+                  ? <span className={styles.value}>{pledge.due_date}</span>
+                  : <Blank label="सावा ब्याज बुझाउने भाका" />}
             </div>
           </div>
         </div>
@@ -73,65 +110,94 @@ export default function PledgePaperForm({ pledge, mode = "view", controls }: Pap
         {controls && (
           <div className={styles.itemToolbar}>
             <span className={styles.itemHeading}>
-              <span>दिएको र लिएको विवरण</span>
-              <span className={styles.itemCount} lang="en" aria-live="polite">{pledge.items.length} {pledge.items.length === 1 ? "item" : "items"}</span>
+              <span>दिएको राखेको विवरण</span>
+              <span className={styles.itemCount} aria-live="polite">{pledge.items.length} विवरण</span>
             </span>
-            <button className={styles.addItem} type="button" lang="en" onClick={controls.addItem} disabled={controls.itemActionsDisabled}>
-              <Plus size={16} aria-hidden="true" />Add Item
+            <button className={styles.addItem} type="button" onClick={controls.addItem} disabled={controls.itemActionsDisabled}>
+              <Plus size={16} aria-hidden="true" />विवरण थप्नुहोस्
             </button>
           </div>
         )}
         <table className={styles.items}>
-          <caption className={styles.screenReaderOnly}>दिएको र लिएको विवरण; तोल ग्राममा; घट र जोर कागजमा भर्न खाली ठाउँ</caption>
+          <caption className={styles.screenReaderOnly}>दिएको राखेको विवरण</caption>
           <colgroup>
             <col className={styles.sequenceColumn} /><col className={styles.descriptionColumn} />
-            <col className={styles.weightColumn} /><col className={styles.manualColumn} /><col className={styles.manualColumn} />
+            <col className={styles.weightColumn} /><col className={styles.ghatColumn} />
+            <col className={styles.jorColumn} />
           </colgroup>
           <thead>
             <tr>
-              <th scope="col">क्र.सं.</th><th scope="col">दिएको र लिएको विवरण</th>
-              <th scope="col" aria-label="तोल (ग्राम)">तोल</th><th scope="col">घट</th><th scope="col">जोर</th>
+              <th scope="col">क्र.सं.</th>
+              <th scope="col">दिएको राखेको विवरण</th>
+              <th scope="col">तोल</th>
+              <th scope="col">थान</th>
+              <th scope="col">जोर</th>
             </tr>
           </thead>
           <tbody>
-            {pledge.items.map((item, index) => (
-              <tr key={item.id}>
-                <td>
-                  {controls ? (
-                    <div className={styles.rowControls}>
-                      <span>{index + 1}</span>
-                      <button
-                        className={styles.removeItem}
-                        type="button"
-                        lang="en"
-                        aria-label={`Remove item ${index + 1}`}
-                        title={pledge.items.length === 1 ? "At least one item is required" : `Remove item ${index + 1}`}
-                        disabled={controls.itemActionsDisabled || pledge.items.length === 1}
-                        onClick={() => controls.removeItem(index)}
-                      ><Trash2 size={16} aria-hidden="true" /></button>
-                    </div>
-                  ) : index + 1}
-                </td>
-                <td className={styles.description}>
-                  {controls ? controls.itemDescription(index) : item.description}
-                  <div className={styles.quantity} lang="en">
-                    <span>Quantity:</span>
-                    {controls ? <div>{controls.itemQuantity(index)}</div> : <span>{item.quantity}</span>}
+            <tr>
+              <td className={styles.entryList} rowSpan={pledge.items.length + 1}>
+                {pledge.items.map((item, index) => (
+                  <div className={styles.entry} key={`sequence-${item.id}`}>
+                    {controls ? (
+                      <div className={styles.rowControls}>
+                        <span>{index + 1}</span>
+                        <button
+                          className={styles.removeItem}
+                          type="button"
+                          aria-label={`विवरण ${index + 1} हटाउनुहोस्`}
+                          title={pledge.items.length === 1 ? "कम्तीमा एउटा विवरण आवश्यक छ" : `विवरण ${index + 1} हटाउनुहोस्`}
+                          disabled={controls.itemActionsDisabled || pledge.items.length === 1}
+                          onClick={() => controls.removeItem(index)}
+                        ><Trash2 size={16} aria-hidden="true" /></button>
+                      </div>
+                    ) : index + 1}
                   </div>
-                </td>
-                <td>{controls ? controls.itemWeight(index) : item.weight_grams}</td>
-                <td><span className={styles.screenReaderOnly}>घट: कागजमा भर्न खाली ठाउँ</span></td>
-                <td><span className={styles.screenReaderOnly}>जोर: कागजमा भर्न खाली ठाउँ</span></td>
-              </tr>
-            ))}
-            {/* The positions of वा and न need the original photo; do not guess. */}
+                ))}
+              </td>
+              <td className={`${styles.entryList} ${styles.description}`} rowSpan={pledge.items.length + 1}>
+                {pledge.items.map((item, index) => (
+                  <div className={styles.entry} key={`particulars-${item.id}`}>
+                    {controls ? controls.itemParticulars(index) : item.particulars}
+                  </div>
+                ))}
+              </td>
+              <td className={styles.entryList} rowSpan={pledge.items.length + 1}>
+                {pledge.items.map((item, index) => (
+                  <div className={styles.entry} key={`weight-${item.id}`}>
+                    {controls ? (
+                      <div className={styles.unitGroup}>{controls.itemWeight(index)}{controls.itemUnit(index)}</div>
+                    ) : `${item.weight} ${UNIT_LABELS[item.unit]}`}
+                  </div>
+                ))}
+              </td>
+              <td>{controls ? controls.itemGhat(0) : <FieldValue label="थान" value={pledge.items[0]?.ghat ?? ""} />}</td>
+              <td>{controls ? controls.itemJor(0) : pledge.items[0]?.jor}</td>
+            </tr>
+            {pledge.items.slice(1).map((item, offset) => {
+              const index = offset + 1;
+              return (
+                <tr key={item.id}>
+                  <td>{controls ? controls.itemGhat(index) : <FieldValue label="थान" value={item.ghat} />}</td>
+                  <td>{controls ? controls.itemJor(index) : item.jor}</td>
+                </tr>
+              );
+            })}
+            <tr className={styles.printedRow}>
+              <td>दर</td>
+              <td>बा</td>
+            </tr>
+            <tr className={styles.footerRow}>
+              <td colSpan={3}>
+                <div className={styles.footerPhone}>
+                  <span>फोन नं. :</span>
+                  {controls ? controls.phone : <FieldValue label="फोन नं." value={pledge.phone} />}
+                </div>
+              </td>
+              <td colSpan={2}><span>सही :</span></td>
+            </tr>
           </tbody>
         </table>
-
-        <div className={styles.footer}>
-          <div className={styles.field}><span>खाता नं.</span><Blank label="खाता नं." /></div>
-          <div className={styles.field}><span>सही</span><Blank label="सही" /></div>
-        </div>
       </article>
     </div>
   );

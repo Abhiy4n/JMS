@@ -5,7 +5,6 @@ import Link from "next/link";
 import { SlidersHorizontal, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
-import CustomerDialog from "@/components/CustomerDialog";
 import MobileFilterSheet from "@/components/MobileFilterSheet";
 import Select from "@/components/select/Select";
 import {
@@ -32,8 +31,6 @@ function CustomersDirectory() {
   const [sourceFilter, setSourceFilter] = useState(() => searchParams.get("source") ?? "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
@@ -42,7 +39,7 @@ function CustomersDirectory() {
       .catch((requestError: unknown) => {
         setError(requestError instanceof Error ? requestError.message : "Could not load business sources.");
       });
-  }, [reloadKey]);
+  }, []);
 
   useEffect(() => {
     let current = true;
@@ -62,7 +59,7 @@ function CustomersDirectory() {
         if (current) setLoading(false);
       });
     return () => { current = false; };
-  }, [search, sourceFilter, reloadKey]);
+  }, [search, sourceFilter]);
 
   const hasFilters = Boolean(search.trim() || sourceFilter);
   const selectedSourceName = sources.find((source) => String(source.id) === sourceFilter)?.name;
@@ -82,17 +79,10 @@ function CustomersDirectory() {
           <h1>Customers</h1>
           <p className="page-description">Customer records stay connected to the source that brought them in.</p>
         </div>
-        <button className="button button-primary" onClick={() => setDialogOpen(true)}>
-          <span aria-hidden="true">+</span>
-          New Customer
-        </button>
       </section>
 
       {sources.length === 0 && !error && (
-        <p className="notice notice-info">
-          No source categories yet. You can add a customer here and create its new source category in the same form.
-          {" "}<Link href="/business-sources">Open Business Sources</Link>
-        </p>
+        <p className="notice notice-info">No source categories yet. <Link href="/business-sources">Open Business Sources</Link></p>
       )}
 
       <div className="table-toolbar desktop-only">
@@ -260,18 +250,6 @@ function CustomersDirectory() {
         </MobileFilterSheet>
       )}
 
-      {dialogOpen && (
-        <CustomerDialog
-          sources={sources}
-          initialSourceId={sourceFilter ? Number(sourceFilter) : undefined}
-          onClose={() => setDialogOpen(false)}
-          onCreated={() => {
-            setDialogOpen(false);
-            setLoading(true);
-            setReloadKey((key) => key + 1);
-          }}
-        />
-      )}
     </>
   );
 }

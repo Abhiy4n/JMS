@@ -110,11 +110,6 @@ export default function BillDetailPage() {
               <span className={`status-badge status-${bill.status.toLowerCase()}`}>
                 {STATUS_LABELS[bill.status]}
               </span>
-              {bill.status !== "CANCELLED" && (
-                <Link className="button button-secondary button-small" href={`/bills/new?edit=${bill.id}`}>
-                  Edit
-                </Link>
-              )}
               <button className="button button-secondary button-small" type="button" onClick={() => window.print()}>
                 <Printer size={14} aria-hidden="true" /> Print
               </button>

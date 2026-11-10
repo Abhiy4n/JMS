@@ -6,7 +6,6 @@ import { Eye, Plus, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
-import DatePicker from "@/components/date-picker/DatePicker";
 import MobileFilterSheet from "@/components/MobileFilterSheet";
 import Select from "@/components/select/Select";
 import { useToast } from "@/components/toast/ToastProvider";
@@ -20,8 +19,8 @@ import { userFacingError } from "@/lib/user-facing-error";
 
 const STATUS_LABELS: Record<PledgeStatus, string> = {
   ACTIVE: "Active",
-  REDEEMED: "Redeemed",
-  CANCELLED: "Cancelled",
+  CLOSED: "Closed",
+  FORFEITED: "Forfeited",
 };
 
 const moneyFormatter = new Intl.NumberFormat(undefined, {
@@ -35,10 +34,7 @@ function formatMoney(value: string) {
 }
 
 function formatDate(value: string | null) {
-  if (!value) return "—";
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+  return value || "—";
 }
 
 export default function PledgesPage() {
@@ -168,22 +164,22 @@ function PledgeRecords() {
           </div>
           <div className="filter-select-wrap pledge-date-filter">
             <span className="sr-only">Pledge date from</span>
-            <DatePicker
+            <input
               aria-label="Pledge date from"
+              placeholder="BS YYYY-MM-DD"
               value={dateFrom}
-              max={dateTo || undefined}
-              onChange={setDateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
             />
           </div>
           <div className="filter-select-wrap pledge-date-filter">
             <span className="sr-only">Pledge date to</span>
-            <DatePicker
+            <input
               aria-label="Pledge date to"
+              placeholder="BS YYYY-MM-DD"
               value={dateTo}
-              min={dateFrom || undefined}
               aria-invalid={Boolean(dateRangeError)}
               aria-describedby={dateRangeError ? "pledge-records-date-error" : undefined}
-              onChange={setDateTo}
+              onChange={(event) => setDateTo(event.target.value)}
             />
           </div>
           <button
@@ -249,24 +245,23 @@ function PledgeRecords() {
               <th scope="col">Customer</th>
               <th scope="col">Business Source</th>
               <th scope="col">Pledge Date</th>
-              <th scope="col">Amount Received</th>
+              <th scope="col">Principal Amount</th>
               <th scope="col">Due Date</th>
               <th scope="col">Status</th>
-              <th scope="col">Payment</th>
-              <th scope="col">Overdue</th>
+              <th scope="col">Outstanding</th>
               <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
             {dateRangeError ? (
-              <tr><td colSpan={10} className="table-message">Choose a valid pledge date range to view records.</td></tr>
+              <tr>              <td colSpan={9} className="table-message">Choose a valid pledge date range to view records.</td></tr>
             ) : loading ? (
-              <tr><td colSpan={10} className="table-message" role="status">Loading Pledge records...</td></tr>
+              <tr><td colSpan={9} className="table-message" role="status">Loading Pledge records...</td></tr>
             ) : error ? (
-              <tr><td colSpan={10} className="table-message">Pledge records could not be loaded.</td></tr>
+              <tr><td colSpan={9} className="table-message">Pledge records could not be loaded.</td></tr>
             ) : pledges.length === 0 ? (
               <tr>
-                <td colSpan={10} className="table-message empty-message">
+                <td colSpan={9} className="table-message empty-message">
                   <strong>{hasFilters ? "No matching Pledge records" : "No Pledge records yet"}</strong>
                   <span>
                     {hasFilters
@@ -281,19 +276,14 @@ function PledgeRecords() {
                 <td>{pledge.customer_name}</td>
                 <td>{pledge.business_source_name || "—"}</td>
                 <td>{formatDate(pledge.pledge_date)}</td>
-                <td className="pledge-amount-cell">{formatMoney(pledge.amount_received)}</td>
+                <td className="pledge-amount-cell">{formatMoney(pledge.principal_amount)}</td>
                 <td>{formatDate(pledge.due_date)}</td>
                 <td>
                   <span className={`status-badge status-${pledge.status.toLowerCase()}`}>
                     {STATUS_LABELS[pledge.status]}
                   </span>
                 </td>
-                <td>{pledge.financial_status === "NOT_LINKED" ? "Historical · not linked" : pledge.financial_status.replaceAll("_", " ")}</td>
-                <td>
-                  {pledge.is_overdue
-                    ? <span className="pledge-overdue-badge">Overdue</span>
-                    : <span className="pledge-not-overdue">—</span>}
-                </td>
+                <td>{formatMoney(pledge.calculation.total_outstanding)}</td>
                 <td>
                   <div className="bill-row-actions">
                     <Link
@@ -331,8 +321,7 @@ function PledgeRecords() {
               <h3 className="mobile-record-name">{pledge.customer_name}</h3>
               <div className="mobile-record-meta">
                 <span className={`status-badge status-${pledge.status.toLowerCase()}`}>{STATUS_LABELS[pledge.status]}</span>
-                <span className="mobile-record-secondary tabular-nums">{formatMoney(pledge.amount_received)}</span>
-                {pledge.is_overdue ? <span className="pledge-overdue-badge">Overdue</span> : null}
+                <span className="mobile-record-secondary tabular-nums">{formatMoney(pledge.principal_amount)}</span>
               </div>
             </div>
             <div className="mobile-record-card-actions">
@@ -369,16 +358,16 @@ function PledgeRecords() {
           </div>
           <div className="form-field">
             <span>Pledge date from</span>
-            <DatePicker aria-label="Pledge date from" value={dateFrom} max={dateTo || undefined} onChange={setDateFrom} />
+            <input aria-label="Pledge date from" placeholder="BS YYYY-MM-DD" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
           </div>
           <div className="form-field">
             <span>Pledge date to</span>
-            <DatePicker
+            <input
               aria-label="Pledge date to"
+              placeholder="BS YYYY-MM-DD"
               value={dateTo}
-              min={dateFrom || undefined}
               aria-invalid={Boolean(dateRangeError)}
-              onChange={setDateTo}
+              onChange={(event) => setDateTo(event.target.value)}
             />
           </div>
         </MobileFilterSheet>

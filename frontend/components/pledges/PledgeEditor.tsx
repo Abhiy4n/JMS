@@ -1,34 +1,56 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes } from "react";
+import { forwardRef, useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
-import DatePicker from "@/components/date-picker/DatePicker";
+import BSDatePicker from "@/components/date-picker/BSDatePicker";
 import Select from "@/components/select/Select";
 import { useToast } from "@/components/toast/ToastProvider";
 import { ApiError } from "@/lib/auth/api";
-import { type Customer, fetchCustomers } from "@/lib/business-data";
-import { createPledge, updatePledge, getPledge, type Pledge, type NewPledgeItem } from "@/lib/pledge-data";
+import { type BusinessSource, type Customer, fetchBusinessSources, fetchCustomers } from "@/lib/business-data";
+import {
+  createPledge,
+  fetchPledgeFormDefaults,
+  getPledge,
+  updatePledge,
+  type NewPledgeItem,
+  type Pledge,
+  type PledgeItemUnit,
+} from "@/lib/pledge-data";
 import { userFacingError } from "@/lib/user-facing-error";
 import PledgePaperForm from "@/app/pledges/[id]/form/PledgePaperForm";
 
 type PledgeItemDraft = NewPledgeItem & { key: number };
-type ItemErrors = Partial<Record<"description" | "weight_grams" | "quantity", string>>;
+type ItemErrorFields = "particulars" | "weight" | "unit" | "ghat" | "jor";
+type ItemErrors = Partial<Record<ItemErrorFields, string>>;
+type SourceWithPledgeTerms = BusinessSource & {
+  upfront_percent?: string | null;
+  upfront_days?: number | null;
+  daily_percent?: string | null;
+  daily_divisor?: number | null;
+};
+
+function isEligibleSource(source: BusinessSource): boolean {
+  if (source.status !== "ACTIVE") return false;
+  if (source.source_type !== "DYNAMIC") return true;
+  const configured = source as SourceWithPledgeTerms;
+  return configured.upfront_percent != null
+    && configured.upfront_days != null
+    && configured.daily_percent != null
+    && configured.daily_divisor != null;
+}
 
 function createEmptyItem(key: number): PledgeItemDraft {
-  return { key, description: "", weight_grams: "", quantity: 1 };
+  return { key, particulars: "", weight: "", unit: "GRAM", ghat: "", jor: "" };
 }
 
 function getErrorMessage(value: unknown): string {
-  if (typeof value === "string") return userFacingError(new Error(value), "Invalid field value. Please review this field.");
+  if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(getErrorMessage).filter(Boolean).join(" ");
   if (value && typeof value === "object") {
-    return Object.values(value as Record<string, unknown>)
-      .map(getErrorMessage)
-      .filter(Boolean)
-      .join(" ");
+    return Object.values(value as Record<string, unknown>).map(getErrorMessage).filter(Boolean).join(" ");
   }
   return "";
 }
@@ -46,54 +68,99 @@ function collectFieldErrors(details: unknown) {
       value.forEach((itemError, index) => {
         if (!itemError || typeof itemError !== "object" || Array.isArray(itemError)) return;
         const errors: ItemErrors = {};
-        for (const itemField of ["description", "weight_grams", "quantity"] as const) {
+        for (const itemField of ["particulars", "weight", "unit", "ghat", "jor"] as const) {
           const message = getErrorMessage((itemError as Record<string, unknown>)[itemField]);
           if (message) errors[itemField] = message;
         }
-        if (Object.keys(errors).length > 0) itemErrors[index] = errors;
+        if (Object.keys(errors).length) itemErrors[index] = errors;
       });
       if (!Object.keys(itemErrors).length) fieldErrors.items = getErrorMessage(value);
     } else if (field === "non_field_errors" || field === "detail") {
       generalError = getErrorMessage(value);
     } else {
+      const target = field === "business_source_id" ? "customer" : field;
       const message = getErrorMessage(value);
-      if (message) fieldErrors[field] = message;
+      if (message) fieldErrors[target] = message;
     }
   }
 
   return { fieldErrors, itemErrors, generalError };
 }
 
-function PaperInput({ label, error, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }) {
-  return <>
-    <input {...props} aria-label={label} aria-invalid={Boolean(error)} aria-describedby={error ? `${props.id}-error` : undefined} />
-    {error && <span id={`${props.id}-error`} data-field-error lang="en">{error}</span>}
-  </>;
+function PaperInput({
+  label,
+  error,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }) {
+  return (
+    <>
+      <input
+        {...props}
+        aria-label={label}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? `${props.id}-error` : undefined}
+      />
+      {error && <span id={`${props.id}-error`} data-field-error>{error}</span>}
+    </>
+  );
 }
+
+const PaperTextarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; error?: string; id: string }>(
+  function PaperTextarea({ label, error, id, ...props }, ref) {
+    return (
+      <>
+        <textarea
+          {...props}
+          id={id}
+          ref={ref}
+          aria-label={label}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${id}-error` : undefined}
+        />
+        {error && <span id={`${id}-error`} data-field-error>{error}</span>}
+      </>
+    );
+  },
+);
 
 type EditorProps = { mode: "create"; pledge?: never } | { mode: "edit"; pledge: Pledge };
 
 export default function PledgeEditor(props: EditorProps) {
   const router = useRouter();
-  // A fresh navigation starts a fresh draft, including after Cancel.
   return <PledgeEditorDraft key={router.bfcacheId} {...props} />;
 }
 
 function PledgeEditorDraft({ mode, pledge }: EditorProps) {
   const editing = mode === "edit";
-  const financialTermsLocked = Boolean(pledge?.credit_id);
+  const detailsLocked = Boolean(pledge?.payments.length);
   const cancelHref = pledge ? `/pledges/${pledge.id}/form` : "/pledges";
   const router = useRouter();
   const toast = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customersLoading, setCustomersLoading] = useState(true);
-  const [customerError, setCustomerError] = useState("");
-  const [customerReloadKey, setCustomerReloadKey] = useState(0);
+  const [sources, setSources] = useState<BusinessSource[]>([]);
+  const [todayBs, setTodayBs] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [customerId, setCustomerId] = useState(pledge ? String(pledge.customer) : "");
+  const [writtenText, setWrittenText] = useState(pledge?.written_text ?? "");
+  const [customerName, setCustomerName] = useState(pledge?.customer_name ?? "");
+  const [address, setAddress] = useState(pledge?.address ?? "");
+  const [phone, setPhone] = useState(pledge?.phone ?? "");
   const [pledgeDate, setPledgeDate] = useState(pledge?.pledge_date ?? "");
-  const [amountReceived, setAmountReceived] = useState(pledge?.amount_received ?? "");
   const [dueDate, setDueDate] = useState(pledge?.due_date ?? "");
-  const [items, setItems] = useState<PledgeItemDraft[]>(() => pledge ? [...pledge.items].sort((a, b) => a.sequence - b.sequence).map((item, index) => ({ key: index + 1, description: item.description, weight_grams: item.weight_grams, quantity: item.quantity })) : [createEmptyItem(1)]);
+  const [principalAmount, setPrincipalAmount] = useState(pledge?.principal_amount ?? "");
+  const [reason, setReason] = useState("");
+  const [items, setItems] = useState<PledgeItemDraft[]>(() => pledge
+    ? [...pledge.items].sort((a, b) => a.sequence - b.sequence).map((item, index) => ({
+      key: index + 1,
+      particulars: item.particulars,
+      weight: item.weight,
+      unit: item.unit,
+      ghat: item.ghat,
+      jor: item.jor,
+    }))
+    : [createEmptyItem(1)]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [itemErrors, setItemErrors] = useState<Record<number, ItemErrors>>({});
   const [formError, setFormError] = useState("");
@@ -101,49 +168,51 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
   const submitLock = useRef(false);
   const nextItemKey = useRef(items.length + 1);
   const [closedPledge, setClosedPledge] = useState<Pledge | null>(null);
-  const itemDescriptionRefs = useRef(new Map<number, HTMLTextAreaElement>());
+  const itemParticularRefs = useRef(new Map<number, HTMLTextAreaElement>());
   const pendingItemFocus = useRef<number | null>(null);
 
   useEffect(() => {
     if (pendingItemFocus.current === null) return;
-    itemDescriptionRefs.current.get(pendingItemFocus.current)?.focus();
+    itemParticularRefs.current.get(pendingItemFocus.current)?.focus();
     pendingItemFocus.current = null;
   }, [items, itemErrors]);
 
   useEffect(() => {
     let current = true;
-    fetchCustomers()
-      .then((data) => {
-        if (current) {
-          setCustomers(data);
-          setCustomerError("");
-        }
+    Promise.all([fetchCustomers(), fetchBusinessSources(), fetchPledgeFormDefaults()])
+      .then(([allCustomers, allSources, defaults]) => {
+        if (!current) return;
+        const eligibleSources = allSources.filter(isEligibleSource);
+        const eligibleSourceIds = new Set(eligibleSources.map((source) => source.id));
+        const eligibleCustomers = allCustomers.filter((customer) =>
+          customer.business_source !== null
+          && (eligibleSourceIds.has(customer.business_source) || customer.id === pledge?.customer)
+        );
+        setCustomers(eligibleCustomers);
+        setSources(allSources);
+        setTodayBs(defaults.today_bs);
+        if (!pledge) setPledgeDate(defaults.today_bs);
+        setLoadError("");
       })
       .catch((requestError: unknown) => {
-        if (current) {
-          setCustomerError(userFacingError(requestError, "Could not load customers. Please try again."));
-        }
+        if (current) setLoadError(userFacingError(requestError, "Could not load the form details. Please try again."));
       })
       .finally(() => {
-        if (current) setCustomersLoading(false);
+        if (current) setLoading(false);
       });
     return () => { current = false; };
-  }, [customerReloadKey]);
+  }, [pledge, reloadKey]);
 
   const selectedCustomer = customers.find((customer) => String(customer.id) === customerId);
+  const selectedSource = sources.find((source) => source.id === selectedCustomer?.business_source);
 
   function clearFieldError(field: string) {
     setFieldErrors((current) => ({ ...current, [field]: "" }));
   }
 
-  function updateItem(key: number, field: keyof NewPledgeItem, value: string | number) {
-    setItems((current) => current.map((item) => (
-      item.key === key ? { ...item, [field]: value } : item
-    )));
-    setItemErrors((current) => ({
-      ...current,
-      [key]: { ...current[key], [field]: "" },
-    }));
+  function updateItem(key: number, field: keyof NewPledgeItem, value: string) {
+    setItems((current) => current.map((item) => item.key === key ? { ...item, [field]: value } : item));
+    setItemErrors((current) => ({ ...current, [key]: { ...current[key], [field]: "" } }));
   }
 
   function addItem() {
@@ -167,41 +236,53 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
   function validateForm() {
     const nextFieldErrors: Record<string, string> = {};
     const nextItemErrors: Record<number, ItemErrors> = {};
-    const amount = Number(amountReceived);
+    const amount = principalAmount.trim();
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
-    if (!selectedCustomer) nextFieldErrors.customer = "Select a customer.";
-    if (!pledgeDate) nextFieldErrors.pledge_date = "Pledge date is required.";
-    if (!amountReceived.trim() || !Number.isFinite(amount) || amount <= 0) {
-      nextFieldErrors.amount_received = "Enter an amount greater than zero.";
-    } else if ((amountReceived.split(".")[1] ?? "").length > 2) {
-      nextFieldErrors.amount_received = "Use at most 2 decimal places.";
+    if (!selectedCustomer) nextFieldErrors.customer = "Select a customer linked to a Business Source.";
+    if (!selectedSource || selectedCustomer?.business_source !== selectedSource.id) {
+      nextFieldErrors.customer = "The selected customer's active Business Source is unavailable.";
     }
-    if (amountReceived && !/^\d{1,12}(?:\.\d{1,2})?$/.test(amountReceived.trim())) {
-      nextFieldErrors.amount_received = "Use up to 12 digits and 2 decimal places.";
+    if (!customerName.trim()) nextFieldErrors.customer_name = "Enter the customer name.";
+    if (!pledgeDate || !datePattern.test(pledgeDate)) nextFieldErrors.pledge_date = "Enter a valid BS date.";
+    else if (todayBs && pledgeDate > todayBs) nextFieldErrors.pledge_date = "Pledge date cannot be in the future.";
+    if (dueDate && !datePattern.test(dueDate)) {
+      nextFieldErrors.due_date = "Enter a valid BS due date.";
     }
-    if (!items.length) nextFieldErrors.items = "Add at least one item.";
-    if (dueDate && pledgeDate && dueDate < pledgeDate) {
-      nextFieldErrors.due_date = "Due date cannot be before the pledge date.";
+    if (!amount || !/^\d{1,12}(?:\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
+      nextFieldErrors.principal_amount = "Enter an amount greater than zero with up to 2 decimal places.";
     }
+    if (!items.length) nextFieldErrors.items = "At least one item is required.";
 
     items.forEach((item) => {
       const errors: ItemErrors = {};
-      const weight = Number(item.weight_grams);
-      if (!item.description.trim()) errors.description = "Enter an item description.";
-      if (!item.weight_grams.trim() || !Number.isFinite(weight) || weight < 0) {
-        errors.weight_grams = "Enter a non-negative weight in grams.";
-      } else if ((item.weight_grams.split(".")[1] ?? "").length > 3) {
-        errors.weight_grams = "Use at most 3 decimal places.";
+      if (!item.particulars.trim()) errors.particulars = "विवरण लेख्नुहोस्।";
+      if (item.particulars.trim().length > 500) errors.particulars = "विवरण ५०० अक्षरभन्दा लामो हुन मिल्दैन।";
+      if (!/^\d{1,9}(?:\.\d{1,3})?$/.test(item.weight) || Number(item.weight) <= 0) {
+        errors.weight = "शून्यभन्दा ठूलो तौल, बढीमा तीन दशमलव स्थानसहित लेख्नुहोस्।";
       }
-      if (item.description.trim().length > 500) errors.description = "Use at most 500 characters.";
-      if (item.weight_grams && !/^\d{1,9}(?:\.\d{1,3})?$/.test(item.weight_grams.trim())) {
-        errors.weight_grams = "Use up to 9 digits and 3 decimal places.";
-      }
-      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
-        errors.quantity = "Quantity must be at least 1.";
-      }
-      if (Object.keys(errors).length > 0) nextItemErrors[item.key] = errors;
+      if (!["TOLA", "LAAL", "GRAM"].includes(item.unit)) errors.unit = "तौलको एकाइ छान्नुहोस्।";
+      if (item.jor.trim() && (!/^\d{1,9}(?:\.\d{1,3})?$/.test(item.jor) || Number(item.jor) <= 0)) {
+        errors.jor = "जोर शून्यभन्दा ठूलो हुनुपर्छ र बढीमा तीन दशमलव स्थान हुन सक्छ।";
+      } else if (!item.jor.trim()) errors.jor = "जोर लेख्नुहोस्।";
+      if (Object.keys(errors).length) nextItemErrors[item.key] = errors;
     });
+
+    const pledgeChanged = pledge && (
+      customerId !== String(pledge.customer)
+      || writtenText !== pledge.written_text
+      || customerName !== pledge.customer_name
+      || address !== pledge.address
+      || phone !== pledge.phone
+      || pledgeDate !== pledge.pledge_date
+      || dueDate !== (pledge.due_date ?? "")
+      || principalAmount !== pledge.principal_amount
+      || JSON.stringify(items.map(({ particulars, weight, unit, ghat, jor }) => ({ particulars, weight, unit, ghat, jor })))
+        !== JSON.stringify(pledge.items.map(({ particulars, weight, unit, ghat, jor }) => ({ particulars, weight, unit, ghat, jor })))
+    );
+    if (editing && pledgeChanged && reason.trim().length < 5) {
+      nextFieldErrors.reason = "The reason must be at least 5 characters.";
+    }
 
     setFieldErrors(nextFieldErrors);
     setItemErrors(nextItemErrors);
@@ -213,12 +294,17 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitLock.current || submitting || customersLoading || customerError || closedPledge || (pledge && pledge.status !== "ACTIVE")) return;
+    if (submitLock.current || submitting || loading || loadError || closedPledge || detailsLocked) return;
     setFormError("");
     if (!validateForm()) {
-      const message = "Review the highlighted fields and correct them before submitting.";
+      const message = "Please correct the highlighted fields and try again.";
       setFormError(message);
       toast.warning(message);
+      return;
+    }
+
+    if (!selectedCustomer?.business_source) {
+      setFormError("Select a customer linked to a Business Source.");
       return;
     }
 
@@ -227,22 +313,29 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
     let savedSuccessfully = false;
     try {
       const payload = {
-        customer: Number(customerId),
+        customer: selectedCustomer.id,
+        business_source_id: selectedCustomer.business_source,
+        customer_name: customerName.trim(),
+        address: address.trim(),
+        phone: phone.trim(),
+        written_text: writtenText.trim(),
         pledge_date: pledgeDate,
-        amount_received: amountReceived.trim(),
         due_date: dueDate || null,
-        items: items.map((item) => ({
-          description: item.description.trim(),
-          weight_grams: item.weight_grams.trim(),
-          quantity: item.quantity,
+        principal_amount: principalAmount.trim(),
+        items: items.map(({ particulars, weight, unit, ghat, jor }) => ({
+          particulars: particulars.trim(),
+          weight: weight.trim(),
+          unit,
+          ghat: ghat.trim(),
+          jor: jor.trim(),
         })),
+        ...(editing ? { reason: reason.trim() } : {}),
       };
       const saved = pledge ? await updatePledge(pledge.id, payload) : await createPledge(payload);
       savedSuccessfully = true;
       router.replace(`/pledges/${saved.id}/form?${editing ? `updated=${encodeURIComponent(saved.updated_at)}` : "created=1"}`);
     } catch (requestError) {
-      const details = requestError instanceof ApiError ? requestError.details : undefined;
-      const errors = collectFieldErrors(details);
+      const errors = collectFieldErrors(requestError instanceof ApiError ? requestError.details : undefined);
       setFieldErrors(errors.fieldErrors);
       setItemErrors(Object.fromEntries(
         Object.entries(errors.itemErrors).map(([index, itemError]) => {
@@ -250,19 +343,16 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
           return [key ?? Number(index), itemError];
         })
       ));
-      const message = (
-        errors.generalError
-        || userFacingError(requestError, `Could not ${editing ? "save" : "create"} the Pledge. Review the fields and try again.`)
-      );
+      const message = errors.generalError
+        || userFacingError(requestError, editing ? "Could not update the pledge. Check the details and try again." : "Could not create the pledge. Check the details and try again.");
       setFormError(message);
       toast.error(message);
       if (pledge) {
-        // Another session may have closed the record while this draft was open.
         try {
           const latest = await getPledge(pledge.id);
           if (latest.status !== "ACTIVE") setClosedPledge(latest);
         } catch {
-          // Preserve the draft and original error when reloading fails.
+          // Keep the draft and original request error if the record cannot be reloaded.
         }
       }
     } finally {
@@ -273,106 +363,254 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
     }
   }
 
+  function selectCustomer(value: string) {
+    const nextCustomer = customers.find((customer) => String(customer.id) === value);
+    const nextSource = sources.find((source) => source.id === nextCustomer?.business_source);
+    setCustomerId(value);
+    setCustomerName(nextCustomer?.name ?? "");
+    setAddress(nextSource?.address ?? "");
+    setPhone(nextSource?.phone ?? "");
+    clearFieldError("customer");
+    clearFieldError("customer_name");
+    clearFieldError("address");
+    clearFieldError("phone");
+  }
+
+  const readOnly = detailsLocked || Boolean(pledge && pledge.status !== "ACTIVE");
+  const paper = closedPledge ?? pledge;
   return (
     <BusinessAppShell>
       <section className="page-heading">
         <div>
-          <p className="eyebrow">PLEDGE MANAGEMENT · {editing ? "EDIT" : "CREATE"}</p>
-          <h1>{editing ? "Edit Pledge" : "Create Pledge"}</h1>
-          {pledge && <p className="page-description">Pledge record: <strong>{pledge.pledge_number}</strong></p>}
+          <p className="eyebrow">Pledge · {editing ? "Edit" : "New"}</p>
+          <h1>{editing ? "Edit Pledge" : "New Pledge"}</h1>
+          {pledge && <p className="page-description">Pledge number: <strong>{pledge.pledge_number}</strong></p>}
         </div>
       </section>
-      <p className="page-description">
-        Enter details in the paper layout. Blank manual areas stay blank.
-        Dates use Gregorian (AD) YYYY-MM-DD; amounts are NPR and weights are grams. Scroll the paper sideways on small screens.
-      </p>
       {formError && <p className="notice notice-error" role="alert">{formError}</p>}
-      {closedPledge ? (
+      {closedPledge || (pledge && pledge.status !== "ACTIVE") ? (
         <>
-          <p className="notice pledge-readonly-notice" role="status">This Pledge is {closedPledge.status.toLowerCase()} and can no longer be edited.</p>
-          <Link className="button button-secondary" href={cancelHref}>Back to Nepali Form</Link>
-          <PledgePaperForm pledge={closedPledge} />
+          <p className="notice pledge-readonly-notice" role="status">This pledge is closed or forfeited and can no longer be edited.</p>
+          <Link className="button button-secondary" href={cancelHref}>Back</Link>
+          {paper && <PledgePaperForm pledge={paper} />}
         </>
       ) : (
-        <form onSubmit={handleSubmit} noValidate aria-busy={submitting}>
-          {customerError && (
+        <form onSubmit={handleSubmit} noValidate aria-busy={submitting || loading}>
+          {loading && <p role="status">Loading form details…</p>}
+          {loadError && (
             <div className="pledge-error-row">
-              <p className="notice notice-error" role="alert">{customerError}</p>
+              <p className="notice notice-error" role="alert">{loadError}</p>
               <button className="button button-secondary button-small" type="button" onClick={() => {
-                setCustomersLoading(true); setCustomerError(""); setCustomerReloadKey((key) => key + 1);
-              }}>Retry loading customers</button>
+                setLoading(true);
+                setLoadError("");
+                setReloadKey((key) => key + 1);
+              }}>Try again</button>
             </div>
           )}
-          {customersLoading && <p role="status">Loading customers...</p>}
-          {!customersLoading && !customerError && !customers.length && <p className="notice">Add a customer in Customers before creating a pledge.</p>}
-          <p className="page-description">Customer, pledge date, amount received, and every item’s description, weight, and quantity are required. Due date is optional.</p>
-          {financialTermsLocked && <p className="notice notice-info">Customer and amount are locked because this Pledge already has a Credit agreement. The pledge date can be changed until a payment is recorded.</p>}
-          <p className="page-description" aria-live="polite">Business source: {selectedCustomer?.source_name || "Set by the selected customer"}</p>
+          {!loading && !loadError && !customers.length && <p className="notice">No active customers linked to a Business Source are available.</p>}
+
+          <label className="form-field">
+            <span>Select customer</span>
+            <Select
+              aria-label="Select customer"
+              value={customerId}
+              disabled={readOnly || submitting || loading || Boolean(loadError)}
+              aria-invalid={Boolean(fieldErrors.customer)}
+              aria-describedby={fieldErrors.customer ? "pledge-customer-error" : undefined}
+              options={[
+                { value: "", label: "Select a customer" },
+                ...customers.map((customer) => ({
+                  value: String(customer.id),
+                  label: `${customer.name}${customer.source_name ? ` · ${customer.source_name}` : ""}`,
+                })),
+              ]}
+              onChange={selectCustomer}
+            />
+            {fieldErrors.customer && <span id="pledge-customer-error" data-field-error>{fieldErrors.customer}</span>}
+          </label>
+
+          {detailsLocked && <p className="notice notice-info">Pledge details cannot be edited after the first payment.</p>}
+          {selectedSource && <p className="page-description">Business Source: {selectedSource.name}</p>}
           <PledgePaperForm
             mode={mode}
             pledge={{
-              customer_name: selectedCustomer?.name ?? "",
+              written_text: writtenText,
+              customer_name: customerName,
+              address,
+              phone,
+              principal_amount: principalAmount,
               pledge_date: pledgeDate,
-              amount_received: amountReceived,
               due_date: dueDate || null,
               items: items.map((item, index) => ({ ...item, id: item.key, sequence: index + 1 })),
             }}
             controls={{
+              writtenText: <PaperTextarea
+                id="paper-written-text"
+                label="लिखितम्"
+                rows={2}
+                value={writtenText}
+                disabled={readOnly || submitting}
+                error={fieldErrors.written_text}
+                onChange={(event) => { setWrittenText(event.target.value); clearFieldError("written_text"); }}
+              />,
+              customerName: <PaperInput
+                id="paper-customer-name"
+                label="बस्ने"
+                required
+                value={customerName}
+                disabled={readOnly || submitting}
+                error={fieldErrors.customer_name}
+                onChange={(event) => { setCustomerName(event.target.value); clearFieldError("customer_name"); }}
+              />,
+              address: <PaperInput
+                id="paper-address"
+                label="जिल्ला"
+                value={address}
+                disabled={readOnly || submitting}
+                error={fieldErrors.address}
+                onChange={(event) => { setAddress(event.target.value); clearFieldError("address"); }}
+              />,
+              phone: <PaperInput
+                id="paper-phone"
+                label="फोन नं."
+                value={phone}
+                disabled={readOnly || submitting}
+                error={fieldErrors.phone}
+                onChange={(event) => { setPhone(event.target.value); clearFieldError("phone"); }}
+              />,
+              principalAmount: <PaperInput
+                id="paper-principal"
+                label="लिएको रकम"
+                required
+                type="text"
+                inputMode="decimal"
+                value={principalAmount}
+                disabled={readOnly || submitting}
+                error={fieldErrors.principal_amount}
+                onChange={(event) => { setPrincipalAmount(event.target.value); clearFieldError("principal_amount"); }}
+              />,
+              pledgeDate: <BSDatePicker
+                id="paper-pledge-date"
+                label="राखेको मिति (बी.सं.)"
+                today={todayBs}
+                required
+                value={pledgeDate}
+                disabled={readOnly || submitting}
+                error={fieldErrors.pledge_date}
+                max={todayBs}
+                onChange={(value) => { setPledgeDate(value); clearFieldError("pledge_date"); }}
+              />,
+              dueDate: <BSDatePicker
+                id="paper-due-date"
+                label="सावा ब्याज बुझाउने भाका (बी.सं.)"
+                today={todayBs}
+                value={dueDate}
+                disabled={readOnly || submitting}
+                error={fieldErrors.due_date}
+                onChange={(value) => { setDueDate(value); clearFieldError("due_date"); }}
+              />,
+              itemActionsDisabled: readOnly || submitting,
               addItem,
               removeItem: (index) => removeItem(items[index].key),
-              itemActionsDisabled: submitting,
-              customer: <>
-                <Select aria-label="कारोबारी — Customer" value={customerId} disabled={financialTermsLocked || submitting || customersLoading || Boolean(customerError)} aria-invalid={Boolean(fieldErrors.customer)} aria-describedby={fieldErrors.customer ? "paper-customer-error" : undefined}
-                  options={[{ value: "", label: "कारोबारी छान्नुहोस्" }, ...customers.map((customer) => ({ value: String(customer.id), label: `${customer.name} · #${customer.id}${customer.phone ? ` · ${customer.phone}` : ""}` }))]}
-                  onChange={(value) => { setCustomerId(value); clearFieldError("customer"); }} />
-                {fieldErrors.customer && <span id="paper-customer-error" data-field-error lang="en">{fieldErrors.customer}</span>}
-              </>,
-              amountReceived: <PaperInput id="paper-amount" label="लिएको रकम — Amount received (NPR)" required type="number" min="0.01" max="999999999999.99" step="0.01" inputMode="decimal"
-                value={amountReceived} disabled={financialTermsLocked || submitting} error={fieldErrors.amount_received}
-                onChange={(event) => { setAmountReceived(event.target.value); clearFieldError("amount_received"); }} />,
-              pledgeDate: <>
-                <DatePicker id="paper-date" aria-label="मिति — Pledge date (AD)" required value={pledgeDate} disabled={submitting} aria-invalid={Boolean(fieldErrors.pledge_date)} aria-describedby={fieldErrors.pledge_date ? "paper-date-error" : undefined}
-                  onChange={(value) => { setPledgeDate(value); clearFieldError("pledge_date"); }} />
-                {fieldErrors.pledge_date && <span id="paper-date-error" data-field-error lang="en">{fieldErrors.pledge_date}</span>}
-              </>,
-              dueDate: <>
-                <DatePicker id="paper-due" aria-label="भाका — Due date (optional)" min={pledgeDate || undefined} value={dueDate} disabled={submitting} aria-invalid={Boolean(fieldErrors.due_date)} aria-describedby={fieldErrors.due_date ? "paper-due-error" : undefined}
-                  onChange={(value) => { setDueDate(value); clearFieldError("due_date"); }} />
-                {fieldErrors.due_date && <span id="paper-due-error" data-field-error lang="en">{fieldErrors.due_date}</span>}
-              </>,
-              itemDescription: (index) => {
+              itemParticulars: (index) => {
                 const item = items[index];
-                const error = itemErrors[item.key]?.description;
-                return <>
-                  <textarea aria-label={`दिएको र लिएको विवरण — Item ${index + 1} description`} required maxLength={500} rows={2}
-                    ref={(node) => {
-                      if (node) itemDescriptionRefs.current.set(item.key, node);
-                      else itemDescriptionRefs.current.delete(item.key);
-                    }}
-                    value={item.description} disabled={submitting} aria-invalid={Boolean(error)} aria-describedby={error ? `paper-description-${item.key}-error` : undefined}
-                    onChange={(event) => updateItem(item.key, "description", event.target.value)} />
-                  {error && <span id={`paper-description-${item.key}-error`} data-field-error lang="en">{error}</span>}
-                </>;
+                const error = itemErrors[item.key]?.particulars;
+                return <PaperTextarea
+                  id={`paper-particulars-${item.key}`}
+                  label={`दिएको राखेको विवरण ${index + 1}`}
+                  required
+                  maxLength={500}
+                  rows={2}
+                  ref={(node) => {
+                    if (node) itemParticularRefs.current.set(item.key, node);
+                    else itemParticularRefs.current.delete(item.key);
+                  }}
+                  value={item.particulars}
+                  disabled={readOnly || submitting}
+                  error={error}
+                  onChange={(event) => updateItem(item.key, "particulars", event.target.value)}
+                />;
               },
               itemWeight: (index) => {
                 const item = items[index];
-                return <PaperInput id={`paper-weight-${item.key}`} label={`तोल — Item ${index + 1} weight in grams`} required type="number" min="0" max="999999999.999" step="0.001" inputMode="decimal"
-                  value={item.weight_grams} disabled={submitting} error={itemErrors[item.key]?.weight_grams}
-                  onChange={(event) => updateItem(item.key, "weight_grams", event.target.value)} />;
+                return <PaperInput
+                  id={`paper-weight-${item.key}`}
+                  label={`तोल ${index + 1}`}
+                  required
+                  type="text"
+                  inputMode="decimal"
+                  value={item.weight}
+                  disabled={readOnly || submitting}
+                  error={itemErrors[item.key]?.weight}
+                  onChange={(event) => updateItem(item.key, "weight", event.target.value)}
+                />;
               },
-              itemQuantity: (index) => {
+              itemUnit: (index) => {
                 const item = items[index];
-                return <PaperInput id={`paper-quantity-${item.key}`} label={`Item ${index + 1} quantity`} required type="number" min="1" step="1" inputMode="numeric"
-                  value={item.quantity || ""} disabled={submitting} error={itemErrors[item.key]?.quantity}
-                  onChange={(event) => updateItem(item.key, "quantity", event.target.value === "" ? 0 : Number(event.target.value))} />;
+                const error = itemErrors[item.key]?.unit;
+                return (
+                  <>
+                    <select
+                      aria-label={`तौलको एकाइ ${index + 1}`}
+                      value={item.unit}
+                      disabled={readOnly || submitting}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? `paper-unit-${item.key}-error` : undefined}
+                      onChange={(event) => updateItem(item.key, "unit", event.target.value as PledgeItemUnit)}
+                    >
+                      <option value="TOLA">तोला</option>
+                      <option value="LAAL">लाल</option>
+                      <option value="GRAM">ग्राम</option>
+                    </select>
+                    {error && <span id={`paper-unit-${item.key}-error`} data-field-error>{error}</span>}
+                  </>
+                );
+              },
+              itemGhat: (index) => {
+                const item = items[index];
+                return <PaperInput
+                  id={`paper-ghat-${item.key}`}
+                  label={`थान ${index + 1}`}
+                  value={item.ghat}
+                  disabled={readOnly || submitting}
+                  error={itemErrors[item.key]?.ghat}
+                  onChange={(event) => updateItem(item.key, "ghat", event.target.value)}
+                />;
+              },
+              itemJor: (index) => {
+                const item = items[index];
+                return <PaperInput
+                  id={`paper-jor-${item.key}`}
+                  label={`जोर ${index + 1}`}
+                  required
+                  type="text"
+                  inputMode="decimal"
+                  value={item.jor}
+                  disabled={readOnly || submitting}
+                  error={itemErrors[item.key]?.jor}
+                  onChange={(event) => updateItem(item.key, "jor", event.target.value)}
+                />;
               },
             }}
           />
           {fieldErrors.items && <p className="notice notice-error" role="alert">{fieldErrors.items}</p>}
+          {editing && (
+            <label className="form-field">
+              <span>Edit reason</span>
+              <PaperInput
+                id="paper-edit-reason"
+                label="Edit reason"
+                value={reason}
+                disabled={readOnly || submitting}
+                error={fieldErrors.reason}
+                onChange={(event) => { setReason(event.target.value); clearFieldError("reason"); }}
+              />
+            </label>
+          )}
           <div className="pledge-form-actions">
-            <button className="button button-secondary" type="button" disabled={submitting} onClick={() => router.replace(cancelHref)}>Cancel</button>
-            <button className="button button-primary" type="submit" disabled={submitting || customersLoading || Boolean(customerError) || !customers.length}>
-              {submitting ? (editing ? "Saving Changes..." : "Creating Pledge...") : (editing ? "Save Changes" : "Create Pledge")}
+            <button className="button button-secondary" type="button" disabled={submitting} onClick={() => router.replace(cancelHref)}>Back</button>
+            <button className="button button-primary" type="submit" disabled={submitting || loading || Boolean(loadError) || !customers.length || readOnly}>
+              {submitting ? (editing ? "Saving…" : "Creating…") : (editing ? "Save changes" : "Create pledge")}
             </button>
           </div>
         </form>
