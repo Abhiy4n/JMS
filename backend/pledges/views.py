@@ -10,7 +10,6 @@ from accounts.models import BusinessSource
 from .bs_dates import ad_to_bs, bs_month_calendar
 from .models import (
     Pledge,
-    PledgeEditLog,
     PledgePayment,
     nepal_today,
     record_pledge_changes,
@@ -18,10 +17,15 @@ from .models import (
 from .serializers import (
     PledgeFilterSerializer,
     PledgePaymentCorrectionSerializer,
+    PledgePaymentDueSerializer,
     PledgePaymentSerializer,
     PledgeSerializer,
     PledgeStatusSerializer,
-    validate_payment_sequence,
+    business_source_financial_summary,
+    payment_due_amount,
+    payment_history_representation,
+    pledge_financial_summary,
+    validate_payment_history,
 )
 
 
@@ -111,6 +115,10 @@ class PledgeDetailView(generics.RetrieveUpdateAPIView):
 class PledgePaymentListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    def get(self, request, pledge_id):
+        pledge = get_object_or_404(Pledge.objects.prefetch_related("payments"), pk=pledge_id)
+        return Response(payment_history_representation(pledge))
+
     @transaction.atomic
     def post(self, request, pledge_id):
         pledge = get_object_or_404(Pledge.objects.select_for_update(), pk=pledge_id)
@@ -120,14 +128,90 @@ class PledgePaymentListCreateView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         payment = serializer.save()
-        return Response(PledgePaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
+        response = next(
+            item for item in payment_history_representation(pledge)
+            if item["id"] == payment.id
+        )
+        return Response(response, status=status.HTTP_201_CREATED)
+
+
+class PledgePaymentDueView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pledge_id):
+        pledge = get_object_or_404(Pledge.objects.prefetch_related("payments", "edit_logs"), pk=pledge_id)
+        serializer = PledgePaymentDueSerializer(
+            data=request.query_params,
+            context={"pledge": pledge},
+        )
+        serializer.is_valid(raise_exception=True)
+        as_of = serializer.validated_data["as_of"]
+        payments = list(pledge.payments.all())
+        edit_logs = list(pledge.edit_logs.all())
+        edited_payment = serializer.validated_data.get("payment")
+        if edited_payment:
+            edited_key = (as_of, edited_payment.recorded_at, edited_payment.id)
+            prior_payments = [
+                payment for payment in payments
+                if not payment.is_voided
+                and payment.id != edited_payment.id
+                and (payment.payment_date, payment.recorded_at, payment.id) < edited_key
+            ]
+        else:
+            prior_payments = [
+                payment for payment in payments
+                if not payment.is_voided and payment.payment_date <= as_of
+            ]
+        same_day_principal = [
+            payment for payment in payments
+            if not payment.is_voided
+            and payment.type == PledgePayment.Type.PRINCIPAL
+            and payment.payment_date == as_of
+        ]
+        return Response({
+            "as_of": ad_to_bs(as_of),
+            "principal_due": str(payment_due_amount(
+                pledge, PledgePayment.Type.PRINCIPAL, as_of, prior_payments, edit_logs,
+            )),
+            "interest_due": str(payment_due_amount(
+                pledge,
+                PledgePayment.Type.INTEREST,
+                as_of,
+                prior_payments,
+                edit_logs,
+                same_day_principal_payments=same_day_principal,
+            )),
+        })
+
+
+class PledgeFinancialSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pledge_id):
+        pledge = get_object_or_404(
+            Pledge.objects.prefetch_related("payments", "edit_logs"),
+            pk=pledge_id,
+        )
+        as_of = nepal_today()
+        return Response({
+            "as_of": ad_to_bs(as_of),
+            **pledge_financial_summary(pledge, as_of),
+        })
+
+
+class BusinessSourcePledgeSummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, source_id):
+        get_object_or_404(BusinessSource, pk=source_id)
+        return Response(business_source_financial_summary(source_id, nepal_today()))
 
 
 class PledgePaymentCorrectionView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsStaffMember]
 
     @transaction.atomic
-    def post(self, request, payment_id):
+    def patch(self, request, payment_id):
         payment = get_object_or_404(
             PledgePayment.objects.select_for_update().select_related("pledge"),
             pk=payment_id,
@@ -140,83 +224,58 @@ class PledgePaymentCorrectionView(APIView):
         serializer = PledgePaymentCorrectionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         values = serializer.validated_data
-        new_values = {
-            "payment_date": values.get("payment_date", payment.payment_date),
-            "interest_amount": values.get("interest_amount", payment.interest_amount),
-            "principal_amount": values.get("principal_amount", payment.principal_amount),
-        }
-        if not new_values["interest_amount"] and not new_values["principal_amount"]:
-            raise serializers.ValidationError({"detail": "A corrected payment cannot have both amounts set to zero; use the removal action."})
-        history = [
-            {
-                "id": item.id,
-                "payment_date": item.payment_date,
-                "interest_amount": item.interest_amount,
-                "principal_amount": item.principal_amount,
-                "is_voided": item.is_voided,
-            }
-            for item in pledge.payments.all()
-            if item.pk != payment.pk
-        ]
-        candidate = {"id": payment.pk, **new_values}
-        validate_payment_sequence(pledge, history + [candidate], list(pledge.edit_logs.all()))
+        new_date = values.get("payment_date", payment.payment_date)
+        new_amount = values.get("amount", payment.amount)
+        history = list(pledge.payments.all())
+        ordered = sorted(
+            (item for item in history if not item.is_voided),
+            key=lambda item: (item.payment_date, item.recorded_at, item.id),
+        )
+        position = next(index for index, item in enumerate(ordered) if item.pk == payment.pk)
+        previous_date = ordered[position - 1].payment_date if position else pledge.pledge_date
+        next_date = ordered[position + 1].payment_date if position + 1 < len(ordered) else nepal_today()
+        if new_date < previous_date or new_date > next_date:
+            raise serializers.ValidationError({
+                "payment_date": "Date must stay between the previous and next payments."
+            })
+
+        candidate = PledgePayment(
+            id=payment.id,
+            pledge=pledge,
+            payment_date=new_date,
+            type=payment.type,
+            amount=new_amount,
+            is_voided=False,
+            recorded_by=payment.recorded_by,
+            recorded_at=payment.recorded_at,
+        )
+        edit_logs = list(pledge.edit_logs.all())
+        validate_payment_history(
+            pledge,
+            [candidate if item.pk == payment.pk else item for item in history],
+            edit_logs,
+            changed_payment_id=payment.pk,
+        )
+
         changes = []
-        for field, new_value in new_values.items():
-            old_value = getattr(payment, field)
-            if old_value != new_value:
-                if field == "payment_date":
-                    old_value, new_value = ad_to_bs(old_value), ad_to_bs(new_value)
-                changes.append((field, old_value, new_value))
-                setattr(payment, field, new_values[field])
+        if payment.payment_date != new_date:
+            changes.append(("payment_date", ad_to_bs(payment.payment_date), ad_to_bs(new_date)))
+        if payment.amount != new_amount:
+            changes.append(("amount", payment.amount, new_amount))
         if not changes:
             raise serializers.ValidationError({"detail": "No payment fields changed."})
+        payment.payment_date = new_date
+        payment.amount = new_amount
         payment.full_clean()
-        payment.save(update_fields=tuple(new_values))
+        payment.save(update_fields=("payment_date", "amount"))
         record_pledge_changes(
-            pledge, changes, request.user, values["reason"], effective_date=payment.payment_date, payment=payment,
+            pledge, changes, request.user, values["reason"], effective_date=new_date, payment=payment,
         )
-        return Response(PledgePaymentSerializer(payment).data)
-
-
-class PledgePaymentRemovalView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsStaffMember]
-
-    @transaction.atomic
-    def post(self, request, payment_id):
-        payment = get_object_or_404(
-            PledgePayment.objects.select_for_update().select_related("pledge"),
-            pk=payment_id,
+        response = next(
+            item for item in payment_history_representation(pledge)
+            if item["id"] == payment.id
         )
-        pledge = Pledge.objects.select_for_update().get(pk=payment.pledge_id)
-        if pledge.status != Pledge.Status.ACTIVE:
-            raise serializers.ValidationError({"detail": "Reopen the pledge before correcting or removing a payment."})
-        if payment.is_voided:
-            raise serializers.ValidationError({"detail": "This payment has already been removed."})
-        serializer = PledgePaymentCorrectionSerializer(data={"reason": request.data.get("reason", "")})
-        serializer.is_valid(raise_exception=True)
-        history = [
-            {
-                "id": item.id,
-                "payment_date": item.payment_date,
-                "interest_amount": item.interest_amount,
-                "principal_amount": item.principal_amount,
-                "is_voided": item.is_voided,
-            }
-            for item in pledge.payments.all()
-            if item.pk != payment.pk
-        ]
-        validate_payment_sequence(pledge, history, list(pledge.edit_logs.all()))
-        payment.is_voided = True
-        payment.save(update_fields=("is_voided",))
-        record_pledge_changes(
-            pledge,
-            [("is_voided", "false", "true")],
-            request.user,
-            serializer.validated_data["reason"],
-            effective_date=payment.payment_date,
-            payment=payment,
-        )
-        return Response({"detail": "Payment removed.", "payment_id": payment.pk})
+        return Response(response)
 
 
 class PledgeStatusPermission(permissions.BasePermission):

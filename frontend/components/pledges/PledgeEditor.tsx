@@ -21,6 +21,7 @@ import {
 } from "@/lib/pledge-data";
 import { userFacingError } from "@/lib/user-facing-error";
 import PledgePaperForm from "@/app/pledges/[id]/form/PledgePaperForm";
+import { PLEDGE_LABELS } from "./pledge-labels";
 
 type PledgeItemDraft = NewPledgeItem & { key: number };
 type ItemErrorFields = "particulars" | "weight" | "unit" | "ghat" | "jor";
@@ -132,7 +133,7 @@ export default function PledgeEditor(props: EditorProps) {
 
 function PledgeEditorDraft({ mode, pledge }: EditorProps) {
   const editing = mode === "edit";
-  const detailsLocked = Boolean(pledge?.payments.length);
+  const detailsLocked = Boolean(pledge?.has_payments);
   const cancelHref = pledge ? `/pledges/${pledge.id}/form` : "/pledges";
   const router = useRouter();
   const toast = useToast();
@@ -252,19 +253,19 @@ function PledgeEditorDraft({ mode, pledge }: EditorProps) {
     if (!amount || !/^\d{1,12}(?:\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
       nextFieldErrors.principal_amount = "Enter an amount greater than zero with up to 2 decimal places.";
     }
-    if (!items.length) nextFieldErrors.items = "At least one item is required.";
+    if (!items.length) nextFieldErrors.items = PLEDGE_LABELS.atLeastOneItem;
 
     items.forEach((item) => {
       const errors: ItemErrors = {};
-      if (!item.particulars.trim()) errors.particulars = "विवरण लेख्नुहोस्।";
-      if (item.particulars.trim().length > 500) errors.particulars = "विवरण ५०० अक्षरभन्दा लामो हुन मिल्दैन।";
+      if (!item.particulars.trim()) errors.particulars = PLEDGE_LABELS.itemDescriptionRequired;
+      if (item.particulars.trim().length > 500) errors.particulars = PLEDGE_LABELS.itemDescriptionTooLong;
       if (!/^\d{1,9}(?:\.\d{1,3})?$/.test(item.weight) || Number(item.weight) <= 0) {
-        errors.weight = "शून्यभन्दा ठूलो तौल, बढीमा तीन दशमलव स्थानसहित लेख्नुहोस्।";
+        errors.weight = PLEDGE_LABELS.weightInvalid;
       }
-      if (!["TOLA", "LAAL", "GRAM"].includes(item.unit)) errors.unit = "तौलको एकाइ छान्नुहोस्।";
+      if (!["TOLA", "LAAL", "GRAM"].includes(item.unit)) errors.unit = PLEDGE_LABELS.unitInvalid;
       if (item.jor.trim() && (!/^\d{1,9}(?:\.\d{1,3})?$/.test(item.jor) || Number(item.jor) <= 0)) {
-        errors.jor = "जोर शून्यभन्दा ठूलो हुनुपर्छ र बढीमा तीन दशमलव स्थान हुन सक्छ।";
-      } else if (!item.jor.trim()) errors.jor = "जोर लेख्नुहोस्।";
+        errors.jor = PLEDGE_LABELS.jorInvalid;
+      } else if (!item.jor.trim()) errors.jor = PLEDGE_LABELS.jorRequired;
       if (Object.keys(errors).length) nextItemErrors[item.key] = errors;
     });
 

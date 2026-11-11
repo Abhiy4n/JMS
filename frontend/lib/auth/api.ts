@@ -12,6 +12,7 @@ export type AuthUser = {
   company_name: string;
   profile_picture?: string;
   role: string;
+  is_staff: boolean;
 };
 
 export type AuthTokens = { access: string; refresh: string };
@@ -419,6 +420,7 @@ function isAuthUser(value: unknown): value is AuthUser {
   if (!isRecord(value)) return false;
   return typeof value.id === "number" && typeof value.name === "string" &&
     typeof value.email === "string" && typeof value.role === "string" &&
+    typeof value.is_staff === "boolean" &&
     (value.company_name === undefined || typeof value.company_name === "string");
 }
 

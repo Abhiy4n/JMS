@@ -7,16 +7,11 @@ import { RotateCcw } from "lucide-react";
 
 import BusinessAppShell from "@/components/BusinessAppShell";
 import Select from "@/components/select/Select";
-import { fetchPledges, PLEDGE_STATUSES, type Pledge, type PledgeStatus } from "@/lib/pledge-data";
+import { fetchPledges, PLEDGE_STATUSES, type Pledge } from "@/lib/pledge-data";
 import { filterRegisterPledges, formatPledgePrincipal, groupPledgesByCustomer, summarizePledges } from "@/lib/pledge-report";
 import { userFacingError } from "@/lib/user-facing-error";
+import { PLEDGE_STATUS_LABELS } from "@/components/pledges/pledge-labels";
 import styles from "./pledge-register.module.css";
-
-const STATUS_LABELS: Record<PledgeStatus, string> = {
-  ACTIVE: "Active",
-  CLOSED: "Closed",
-  FORFEITED: "Forfeited",
-};
 
 type ReportResult = {
   key: string;
@@ -155,7 +150,7 @@ function CustomerPledgeRegister() {
               value={status}
               options={[
                 { value: "", label: "All statuses" },
-                ...PLEDGE_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] })),
+                ...PLEDGE_STATUSES.map((value) => ({ value, label: PLEDGE_STATUS_LABELS[value] })),
               ]}
               onChange={(value) => updateFilter("status", value)}
             />
@@ -224,7 +219,7 @@ function CustomerPledgeRegister() {
                         <article className={styles.pledge} aria-labelledby={`register-pledge-${pledge.id}`}>
                           <div className={styles.pledgeHeading}>
                             <h3 id={`register-pledge-${pledge.id}`}>{pledge.pledge_number}</h3>
-                            <span className={`status-badge status-${pledge.status.toLowerCase()}`}>{STATUS_LABELS[pledge.status]}</span>
+                            <span className={`status-badge status-${pledge.status.toLowerCase()}`}>{PLEDGE_STATUS_LABELS[pledge.status]}</span>
                           </div>
                           <dl className={styles.facts}>
                             <div><dt>Pledge date</dt><dd>{formatDate(pledge.pledge_date)}</dd></div>

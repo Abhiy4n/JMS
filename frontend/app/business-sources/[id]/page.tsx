@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -9,21 +9,22 @@ import {
   type BusinessSource,
   fetchBusinessSource,
 } from "@/lib/business-data";
-import { fetchPledges, type Pledge } from "@/lib/pledge-data";
+import {
+  fetchPledges,
+  getBusinessSourcePledgeSummary,
+  type BusinessSourcePledgeSummary,
+  type Pledge,
+} from "@/lib/pledge-data";
 import { userFacingError } from "@/lib/user-facing-error";
+import { PLEDGE_LABELS } from "@/components/pledges/pledge-labels";
 
 const moneyFormatter = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
-function formatMoney(value: number) {
-  return `Rs. ${moneyFormatter.format(value)}`;
-}
-
-function formatDate(value: string) {
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+function formatMoney(value: string) {
+  return `${PLEDGE_LABELS.currency} ${moneyFormatter.format(Number(value))}`;
 }
 
 export default function BusinessSourceDetailPage() {
@@ -31,6 +32,7 @@ export default function BusinessSourceDetailPage() {
   const sourceId = Number(params.id);
   const [source, setSource] = useState<BusinessSource | null>(null);
   const [pledges, setPledges] = useState<Pledge[]>([]);
+  const [pledgeSummary, setPledgeSummary] = useState<BusinessSourcePledgeSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -43,11 +45,13 @@ export default function BusinessSourceDetailPage() {
     Promise.all([
       fetchBusinessSource(sourceId),
       fetchPledges({ business_source: String(sourceId) }),
+      getBusinessSourcePledgeSummary(sourceId),
     ])
-      .then(([sourceData, pledgeData]) => {
+      .then(([sourceData, pledgeData, summaryData]) => {
         if (current) {
           setSource(sourceData);
           setPledges(pledgeData);
+          setPledgeSummary(summaryData);
           setError("");
         }
       })
@@ -62,14 +66,6 @@ export default function BusinessSourceDetailPage() {
 
     return () => { current = false; };
   }, [sourceId]);
-
-  const totals = useMemo(() => pledges.reduce(
-    (sum, pledge) => ({
-      principal: sum.principal + Number(pledge.calculation.outstanding_principal),
-      interest: sum.interest + Number(pledge.calculation.unpaid_interest),
-    }),
-    { principal: 0, interest: 0 },
-  ), [pledges]);
 
   return (
     <>
@@ -109,7 +105,7 @@ export default function BusinessSourceDetailPage() {
                   {source.interest_percentage != null
                     ? `${source.interest_percentage}% · ${source.days ?? "—"} days`
                     : source.interest_amount != null
-                      ? `Rs. ${source.interest_amount} · ${source.days ?? "—"} days`
+                      ? `${PLEDGE_LABELS.currency} ${source.interest_amount} · ${source.days ?? "—"} days`
                       : "—"}
                 </dd>
               </div>
@@ -124,15 +120,38 @@ export default function BusinessSourceDetailPage() {
               </div>
             </div>
 
-            <div className="source-account-cards source-pledge-total-cards">
-              <article className="source-account-card">
-                <span>Total Pledge Principal Due</span>
-                <strong>{loading ? "—" : formatMoney(totals.principal)}</strong>
-              </article>
-              <article className="source-account-card">
-                <span>Total Pledge Interest Due</span>
-                <strong>{loading ? "—" : formatMoney(totals.interest)}</strong>
-              </article>
+            <p className="page-description">
+              {PLEDGE_LABELS.asOf} {pledgeSummary?.as_of ?? "—"}
+            </p>
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col"></th>
+                    <th scope="col">{PLEDGE_LABELS.total}</th>
+                    <th scope="col">{PLEDGE_LABELS.paid}</th>
+                    <th scope="col">{PLEDGE_LABELS.due}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(["principal", "interest", "total"] as const).map((rowName) => {
+                    const row = pledgeSummary?.summary[rowName];
+                    const label = rowName === "principal"
+                      ? PLEDGE_LABELS.principal
+                      : rowName === "interest"
+                        ? PLEDGE_LABELS.interest
+                        : PLEDGE_LABELS.total;
+                    return (
+                      <tr key={rowName}>
+                        <th scope="row">{label}</th>
+                        <td>{row ? formatMoney(row.total) : "—"}</td>
+                        <td>{row ? formatMoney(row.paid) : "—"}</td>
+                        <td>{row ? formatMoney(row.due) : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
             <h2>All Pledges</h2>
@@ -158,10 +177,10 @@ export default function BusinessSourceDetailPage() {
                     <tr key={pledge.id}>
                       <td><Link className="source-name-link" href={`/pledges/${pledge.id}/form`}>{pledge.pledge_number}</Link></td>
                       <td>{pledge.customer_name}</td>
-                      <td>{formatDate(pledge.pledge_date)}</td>
-                      <td className="source-account-amount">{formatMoney(Number(pledge.calculation.outstanding_principal))}</td>
-                      <td className="source-account-amount">{formatMoney(Number(pledge.calculation.unpaid_interest))}</td>
-                      <td className="source-account-amount">{formatMoney(Number(pledge.calculation.total_outstanding))}</td>
+                      <td>{pledge.pledge_date}</td>
+                      <td className="source-account-amount">{formatMoney(pledge.calculation.outstanding_principal)}</td>
+                      <td className="source-account-amount">{formatMoney(pledge.calculation.unpaid_interest)}</td>
+                      <td className="source-account-amount">{formatMoney(pledge.calculation.total_outstanding)}</td>
                       <td><span className={`status-badge status-${pledge.status.toLowerCase()}`}>{pledge.status_label}</span></td>
                     </tr>
                   ))}

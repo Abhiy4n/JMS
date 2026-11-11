@@ -3,6 +3,7 @@ import { toNepaliCurrencyWords } from "@/lib/nepali-currency-words.js";
 import type { ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import styles from "./pledge-paper-form.module.css";
+import { PLEDGE_LABELS } from "@/components/pledges/pledge-labels";
 
 type PaperPledge = Pick<
   Pledge,
@@ -146,7 +147,7 @@ export default function PledgePaperForm({ pledge, mode = "view", controls }: Pap
                           className={styles.removeItem}
                           type="button"
                           aria-label={`विवरण ${index + 1} हटाउनुहोस्`}
-                          title={pledge.items.length === 1 ? "कम्तीमा एउटा विवरण आवश्यक छ" : `विवरण ${index + 1} हटाउनुहोस्`}
+                          title={pledge.items.length === 1 ? PLEDGE_LABELS.atLeastOneItem : `विवरण ${index + 1} हटाउनुहोस्`}
                           disabled={controls.itemActionsDisabled || pledge.items.length === 1}
                           onClick={() => controls.removeItem(index)}
                         ><Trash2 size={16} aria-hidden="true" /></button>

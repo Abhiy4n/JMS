@@ -13,7 +13,7 @@ const base = `http://127.0.0.1:${appPort}`;
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 function installMockApi() {
-  const user = { id: 1, name: "Auth tester", email: "auth@example.com", company_name: "Admin", profile_picture: "", role: "Admin" };
+  const user = { id: 1, name: "Auth tester", email: "auth@example.com", company_name: "Admin", profile_picture: "", role: "Admin", is_staff: true };
   const state = window.__authTest = { requests: [], meMode: "success", meDelay: 0, user };
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, options = {}) => {

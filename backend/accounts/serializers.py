@@ -67,7 +67,7 @@ def validate_customer_email(value):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "name", "email", "company_name", "profile_picture", "role")
+        fields = ("id", "name", "email", "company_name", "profile_picture", "role", "is_staff")
         read_only_fields = fields
 
 

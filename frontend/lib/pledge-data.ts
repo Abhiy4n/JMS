@@ -15,13 +15,36 @@ export type PledgeItem = {
   jor: string;
 };
 
+export type PledgePaymentType = "PRINCIPAL" | "INTEREST";
+
+export type PledgePaymentEdit = {
+  id: number;
+  edit_id: string;
+  field: string;
+  old_value: string;
+  new_value: string;
+  changed_by: string;
+  changed_at: string;
+  reason: string;
+};
+
 export type PledgePayment = {
   id: number;
   payment_date: string;
-  interest_amount: string;
-  principal_amount: string;
-  total_amount: string;
+  type: PledgePaymentType;
+  amount: string;
+  due_before: string;
+  remaining_after: string;
+  recorded_by: string;
+  recorded_at: string;
   is_voided: boolean;
+  edit_history: PledgePaymentEdit[];
+};
+
+export type PledgePaymentDue = {
+  as_of: string;
+  principal_due: string;
+  interest_due: string;
 };
 
 export type PledgeCalculation = {
@@ -34,6 +57,41 @@ export type PledgeCalculation = {
   unpaid_interest: string;
   outstanding_principal: string;
   total_outstanding: string;
+};
+
+export type PledgeFinancialRow = {
+  total: string;
+  paid: string;
+  due: string;
+};
+
+export type PledgeFinancialRows = {
+  principal: PledgeFinancialRow;
+  interest: PledgeFinancialRow;
+  total: PledgeFinancialRow;
+};
+
+export type PledgeInterestPeriod = {
+  kind: "UPFRONT" | "DAILY" | "PAUSED" | "PRINCIPAL_PAYMENT";
+  start_date: string;
+  end_date: string;
+  days: number;
+  principal_used: string;
+  rate: string;
+  interest: string;
+  payment_amount?: string;
+  new_principal?: string;
+};
+
+export type PledgeFinancialSummary = {
+  as_of: string;
+  summary: PledgeFinancialRows;
+  interest_breakdown: PledgeInterestPeriod[];
+};
+
+export type BusinessSourcePledgeSummary = {
+  as_of: string;
+  summary: PledgeFinancialRows;
 };
 
 export type Pledge = {
@@ -57,6 +115,7 @@ export type Pledge = {
   status_label: string;
   calculation: PledgeCalculation;
   payments: PledgePayment[];
+  has_payments: boolean;
   items: PledgeItem[];
   created_at: string;
   updated_at: string;
@@ -123,6 +182,22 @@ export function getPledge(id: number) {
   );
 }
 
+export function getPledgeFinancialSummary(id: number) {
+  return apiRequest<PledgeFinancialSummary>(
+    `/api/pledges/${id}/summary/`,
+    {},
+    getAccessToken()
+  );
+}
+
+export function getBusinessSourcePledgeSummary(sourceId: number) {
+  return apiRequest<BusinessSourcePledgeSummary>(
+    `/api/business-sources/${sourceId}/pledge-summary/`,
+    {},
+    getAccessToken()
+  );
+}
+
 export function fetchPledgeFormDefaults() {
   return apiRequest<PledgeFormDefaults>(
     "/api/pledges/form-defaults/",
@@ -160,6 +235,38 @@ export function closePledge(id: number) {
   return apiRequest<Pledge>(
     `/api/pledges/${id}/status/`,
     { method: "POST", body: JSON.stringify({ status: "CLOSED" }) },
+    getAccessToken()
+  );
+}
+
+export function getPledgePaymentDue(pledgeId: number, asOf: string, paymentId?: number) {
+  const query = new URLSearchParams({ as_of: asOf });
+  if (paymentId !== undefined) query.set("payment_id", String(paymentId));
+  return apiRequest<PledgePaymentDue>(
+    `/api/pledges/${pledgeId}/payments/due/?${query.toString()}`,
+    {},
+    getAccessToken()
+  );
+}
+
+export function createPledgePayment(
+  pledgeId: number,
+  payload: { payment_date: string; type: PledgePaymentType; amount: string }
+) {
+  return apiRequest<PledgePayment>(
+    `/api/pledges/${pledgeId}/payments/`,
+    { method: "POST", body: JSON.stringify(payload) },
+    getAccessToken()
+  );
+}
+
+export function updatePledgePayment(
+  paymentId: number,
+  payload: { payment_date: string; amount: string; reason: string }
+) {
+  return apiRequest<PledgePayment>(
+    `/api/pledge-payments/${paymentId}/`,
+    { method: "PATCH", body: JSON.stringify(payload) },
     getAccessToken()
   );
 }

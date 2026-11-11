@@ -65,8 +65,19 @@ class AuthSessionTests(APITestCase):
         self.assertEqual(new_user.auth_sessions.count(), 1)
         self.assertEqual(new_user.login_events.count(), 1)
         self.assertEqual(response.data["user"]["company_name"], "Admin")
+        self.assertFalse(response.data["user"]["is_staff"])
         self.authorize(response.data["access"])
-        self.assertEqual(self.client.get(reverse("auth-me")).status_code, 200)
+        current_user = self.client.get(reverse("auth-me"))
+        self.assertEqual(current_user.status_code, 200)
+        self.assertFalse(current_user.data["is_staff"])
+
+    def test_staff_flag_is_included_in_auth_user_responses(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=("is_staff",))
+        login = self.login()
+        self.assertTrue(login.data["user"]["is_staff"])
+        self.authorize(login.data["access"])
+        self.assertTrue(self.client.get(reverse("auth-me")).data["is_staff"])
 
     def test_company_name_can_be_changed_and_cannot_be_blank(self):
         login = self.login()

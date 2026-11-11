@@ -15,8 +15,7 @@ Open two terminal windows from the project root.
 ```bash
 cd backend
 .venv/bin/python manage.py migrate
-.venv/bin/python manage.py runserver 8000
-```
+.venv/bin/python manage.py runserver 8000```
 
 The backend health check is available at `http://localhost:8000/api/health/`.
 

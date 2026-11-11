@@ -136,49 +136,41 @@ class Pledge(models.Model):
 
     @property
     def is_partially_paid(self):
-        return self.payments.filter(is_voided=False, principal_amount__gt=0).exists()
+        return self.payments.filter(is_voided=False, type=PledgePayment.Type.PRINCIPAL).exists()
 
 
 class PledgePayment(models.Model):
+    class Type(models.TextChoices):
+        PRINCIPAL = "PRINCIPAL", "Principal"
+        INTEREST = "INTEREST", "Interest"
+
     pledge = models.ForeignKey(Pledge, on_delete=models.PROTECT, related_name="payments")
     payment_date = models.DateField(default=nepal_today)
-    interest_amount = models.DecimalField(
-        max_digits=14, decimal_places=2, default=Decimal("0.00"),
-        validators=[MinValueValidator(Decimal("0.00"))],
-    )
-    principal_amount = models.DecimalField(
-        max_digits=14, decimal_places=2, default=Decimal("0.00"),
-        validators=[MinValueValidator(Decimal("0.00"))],
+    type = models.CharField(max_length=9, choices=Type.choices)
+    amount = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
     )
     is_voided = models.BooleanField(default=False)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="pledge_payments")
-    created_at = models.DateTimeField(auto_now_add=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="pledge_payments")
+    recorded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["payment_date", "id"]
+        ordering = ["payment_date", "recorded_at", "id"]
         constraints = [
             models.CheckConstraint(
-                condition=Q(interest_amount__gte=0) & Q(principal_amount__gte=0),
-                name="pledge_payment_amounts_nonnegative",
-            ),
-            models.CheckConstraint(
-                condition=Q(interest_amount__gt=0) | Q(principal_amount__gt=0),
-                name="pledge_payment_not_empty",
+                condition=Q(amount__gt=0),
+                name="pledge_payment_amount_positive",
             ),
         ]
 
     def clean(self):
         super().clean()
-        if self.interest_amount == 0 and self.principal_amount == 0:
-            raise ValidationError("A payment must include interest, principal, or both.")
+        if self.amount <= 0:
+            raise ValidationError({"amount": "Payment amount must be greater than zero."})
 
     def delete(self, *args, **kwargs):
-        raise ValidationError("Payments cannot be deleted; use the logged removal action.")
-
-    @property
-    def total_amount(self):
-        return self.interest_amount + self.principal_amount
-
+        raise ValidationError("Payments cannot be deleted.")
 
 class AppendOnlyQuerySet(models.QuerySet):
     def update(self, **kwargs):

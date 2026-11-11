@@ -16,12 +16,7 @@ import {
   type PledgeStatus,
 } from "@/lib/pledge-data";
 import { userFacingError } from "@/lib/user-facing-error";
-
-const STATUS_LABELS: Record<PledgeStatus, string> = {
-  ACTIVE: "Active",
-  CLOSED: "Closed",
-  FORFEITED: "Forfeited",
-};
+import { PLEDGE_STATUS_LABELS } from "@/components/pledges/pledge-labels";
 
 const moneyFormatter = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
@@ -157,7 +152,7 @@ function PledgeRecords() {
               value={status}
               options={[
                 { value: "", label: "All statuses" },
-                ...PLEDGE_STATUSES.map((pledgeStatus) => ({ value: pledgeStatus, label: STATUS_LABELS[pledgeStatus] })),
+                ...PLEDGE_STATUSES.map((pledgeStatus) => ({ value: pledgeStatus, label: PLEDGE_STATUS_LABELS[pledgeStatus] })),
               ]}
               onChange={setStatus}
             />
@@ -220,7 +215,7 @@ function PledgeRecords() {
             )}
             {status && (
               <span className="mobile-filter-chip">
-                Status: {STATUS_LABELS[status]}
+                Status: {PLEDGE_STATUS_LABELS[status]}
                 <button type="button" aria-label="Clear status filter" onClick={() => setStatus("")}><X size={12} aria-hidden="true" /></button>
               </span>
             )}
@@ -280,7 +275,7 @@ function PledgeRecords() {
                 <td>{formatDate(pledge.due_date)}</td>
                 <td>
                   <span className={`status-badge status-${pledge.status.toLowerCase()}`}>
-                    {STATUS_LABELS[pledge.status]}
+                    {PLEDGE_STATUS_LABELS[pledge.status]}
                   </span>
                 </td>
                 <td>{formatMoney(pledge.calculation.total_outstanding)}</td>
@@ -320,7 +315,7 @@ function PledgeRecords() {
               <span className="mobile-record-sn">SN {index + 1} · {pledge.pledge_number}</span>
               <h3 className="mobile-record-name">{pledge.customer_name}</h3>
               <div className="mobile-record-meta">
-                <span className={`status-badge status-${pledge.status.toLowerCase()}`}>{STATUS_LABELS[pledge.status]}</span>
+                <span className={`status-badge status-${pledge.status.toLowerCase()}`}>{PLEDGE_STATUS_LABELS[pledge.status]}</span>
                 <span className="mobile-record-secondary tabular-nums">{formatMoney(pledge.principal_amount)}</span>
               </div>
             </div>
@@ -351,7 +346,7 @@ function PledgeRecords() {
               value={status}
               options={[
                 { value: "", label: "All statuses" },
-                ...PLEDGE_STATUSES.map((pledgeStatus) => ({ value: pledgeStatus, label: STATUS_LABELS[pledgeStatus] })),
+                ...PLEDGE_STATUSES.map((pledgeStatus) => ({ value: pledgeStatus, label: PLEDGE_STATUS_LABELS[pledgeStatus] })),
               ]}
               onChange={setStatus}
             />
