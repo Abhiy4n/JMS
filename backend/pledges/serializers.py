@@ -7,8 +7,12 @@ from rest_framework import serializers
 
 from accounts.models import BusinessSource, Customer
 
-from .bs_dates import BSDateField, ad_to_bs
-from .interest import calculate_pledge_interest, calculate_pledge_interest_breakdown
+from .bs_dates import BSDateField, ad_to_bs, bs_elapsed_days
+from .interest import (
+    calculate_pledge_interest,
+    calculate_pledge_interest_breakdown,
+    month_end_extra_due,
+)
 from .models import (
     Pledge,
     PledgeEditLog,
@@ -176,6 +180,19 @@ def pledge_financial_summary(pledge, as_of, *, include_breakdown=True):
             for row_name, row in summary.items()
         },
     }
+    extra = month_end_extra_due(
+        pledge,
+        interest_payment_rows(payments),
+        edit_logs,
+        as_of,
+        calculation["outstanding_principal"],
+    )
+    if extra is not None:
+        result["month_end_extra"] = {
+            "days": extra["days"],
+            "amount": _money(extra["amount"]),
+            "payable_today": _money(calculation["unpaid_interest"] + extra["amount"]),
+        }
     if include_breakdown:
         result["interest_breakdown"] = []
         for row in calculate_pledge_interest_breakdown(
@@ -221,7 +238,7 @@ def business_source_financial_summary(source_id, as_of):
     }
 
 
-def payment_due_amount(
+def payment_due_details(
     pledge,
     payment_type,
     payment_date,
@@ -248,9 +265,46 @@ def payment_due_amount(
         payment_date,
     )
     if payment_type == PledgePayment.Type.INTEREST:
-        return max(calculation["unpaid_interest"], Decimal("0.00"))
+        due = max(calculation["unpaid_interest"], Decimal("0.00"))
+        extra = month_end_extra_due(
+            pledge,
+            interest_payment_rows(calculation_payments),
+            edit_logs,
+            payment_date,
+            calculation["outstanding_principal"],
+        )
+        if extra is not None:
+            due += extra["amount"]
+            extra = {
+                **extra,
+                "amount": _money(extra["amount"]),
+                "payable_today": _money(due),
+            }
+        return {"amount": due, "month_end_extra": extra}
 
-    return max(calculation["outstanding_principal"], Decimal("0.00"))
+    return {
+        "amount": max(calculation["outstanding_principal"], Decimal("0.00")),
+        "month_end_extra": None,
+    }
+
+
+def payment_due_amount(
+    pledge,
+    payment_type,
+    payment_date,
+    prior_payments,
+    edit_logs,
+    *,
+    same_day_principal_payments=(),
+):
+    return payment_due_details(
+        pledge,
+        payment_type,
+        payment_date,
+        prior_payments,
+        edit_logs,
+        same_day_principal_payments=same_day_principal_payments,
+    )["amount"]
 
 
 def payment_is_active_on(pledge, payment_date, edit_logs):
@@ -345,6 +399,37 @@ class PledgeFilterSerializer(serializers.Serializer):
         return attrs
 
 
+def pledge_age_data(pledge_date, status, edit_logs, today):
+    if status == Pledge.Status.ACTIVE:
+        as_of = today
+    elif status in (Pledge.Status.CLOSED, Pledge.Status.FORFEITED):
+        status_change = next(
+            (
+                log for log in edit_logs
+                if log.field == "status"
+                and log.new_value == status
+                and (log.effective_date is not None or log.changed_at is not None)
+            ),
+            None,
+        )
+        if status_change is None:
+            raise ValueError("A closed or forfeited pledge must have a matching status history entry.")
+        as_of = status_change.effective_date or status_change.changed_at.date()
+    else:
+        raise ValueError("Pledge has an unsupported status.")
+
+    elapsed = bs_elapsed_days(pledge_date, as_of)
+    years, remainder = divmod(elapsed, 360)
+    months, days = divmod(remainder, 30)
+    parts = []
+    for value, unit in ((years, "year"), (months, "month"), (days, "day")):
+        if value:
+            parts.append(f"{value} {unit}{'' if value == 1 else 's'}")
+    if not parts:
+        parts.append("0 days")
+    return {"years": years, "months": months, "days": days, "text": " ".join(parts)}
+
+
 class PledgeSerializer(serializers.ModelSerializer):
     customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all())
     business_source_id = serializers.PrimaryKeyRelatedField(
@@ -375,6 +460,7 @@ class PledgeSerializer(serializers.ModelSerializer):
     calculation = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
     has_payments = serializers.SerializerMethodField()
+    age = serializers.SerializerMethodField()
     edit_log = PledgeEditLogSerializer(source="edit_logs", many=True, read_only=True)
     reason = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=500)
 
@@ -385,11 +471,11 @@ class PledgeSerializer(serializers.ModelSerializer):
             "business_source_name", "pledge_date", "due_date", "written_text", "address",
             "phone", "principal_amount", "upfront_percent",
             "upfront_days", "daily_percent", "daily_divisor", "status", "status_label",
-            "calculation", "payments", "has_payments", "edit_log", "items", "reason", "created_at", "updated_at",
+            "calculation", "payments", "has_payments", "age", "edit_log", "items", "reason", "created_at", "updated_at",
         )
         read_only_fields = (
             "id", "pledge_number", "business_source_name", "status",
-            "status_label", "calculation", "payments", "has_payments", "edit_log", "created_at", "updated_at",
+            "status_label", "calculation", "payments", "has_payments", "age", "edit_log", "created_at", "updated_at",
         )
 
     def get_status_label(self, obj):
@@ -405,6 +491,14 @@ class PledgeSerializer(serializers.ModelSerializer):
             nepal_today(),
         )
         return {key: str(value) for key, value in result.items()}
+
+    def get_age(self, obj):
+        return pledge_age_data(
+            obj.pledge_date,
+            obj.status,
+            obj.edit_logs.all(),
+            nepal_today(),
+        )
 
     def get_payments(self, obj):
         payments = list(

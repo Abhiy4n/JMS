@@ -38,6 +38,24 @@ def ad_to_bs(value):
         raise ValueError("Gregorian date is outside the supported Bikram Sambat range (1975-2100).") from exc
 
 
+def bs_elapsed_days(start_date, end_date):
+    start = nepali_datetime.date.from_datetime_date(start_date)
+    end = nepali_datetime.date.from_datetime_date(end_date)
+    start_number = 360 * start.year + 30 * start.month + min(start.day, 30)
+    end_number = 360 * end.year + 30 * end.month + min(end.day, 30)
+    return end_number - start_number
+
+
+def bs_date_after_360_days(value, days):
+    bs_date = nepali_datetime.date.from_datetime_date(value)
+    month_index = bs_date.year * 12 + bs_date.month - 1
+    day_offset = min(bs_date.day, 30) - 1 + days
+    month_index += day_offset // 30
+    day = day_offset % 30 + 1
+    year, month = divmod(month_index, 12)
+    return nepali_datetime.date(year, month + 1, day).to_datetime_date()
+
+
 def bs_month_calendar(year, month):
     if not isinstance(year, int) or not isinstance(month, int) or not 1 <= month <= 12:
         raise ValueError("Enter a valid Bikram Sambat year and month.")

@@ -1,6 +1,8 @@
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
+from .bs_dates import ad_to_bs, bs_date_after_360_days, bs_elapsed_days
+
 
 CENT = Decimal("0.01")
 HUNDRED = Decimal("100")
@@ -36,7 +38,7 @@ def _status_events(edit_logs):
     )
 
 
-def _paused_ranges(edit_logs, end_date):
+def _paused_ranges(edit_logs, end_date, pledge_date):
     ranges = []
     pause_start = None
     for event_date, _, _, new_status in _status_events(edit_logs):
@@ -44,13 +46,110 @@ def _paused_ranges(edit_logs, end_date):
             continue
         if new_status in ("FORFEITED", "CLOSED"):
             if pause_start is None:
-                pause_start = event_date + timedelta(days=1)
+                pause_start = bs_elapsed_days(pledge_date, event_date)
         elif new_status == "ACTIVE" and pause_start is not None:
-            ranges.append((pause_start, event_date - timedelta(days=1)))
+            ranges.append((pause_start, bs_elapsed_days(pledge_date, event_date)))
             pause_start = None
     if pause_start is not None:
-        ranges.append((pause_start, end_date))
+        ranges.append((pause_start, bs_elapsed_days(pledge_date, end_date) + 1))
     return ranges
+
+
+def _is_paused_day(day_number, pause_ranges):
+    return any(start < day_number < end for start, end in pause_ranges)
+
+
+def _month_end_extra_entries(pledge, payments, edit_logs, as_of_date):
+    pledge_date = _get(pledge, "pledge_date")
+    principal = Decimal(_get(pledge, "principal_amount"))
+    upfront_days = int(_get(pledge, "upfront_days"))
+    daily_percent = Decimal(_get(pledge, "daily_percent"))
+    divisor = int(_get(pledge, "daily_divisor"))
+    active_payments = [
+        payment for payment in payments
+        if not _get(payment, "is_voided", False)
+        and _get(payment, "payment_date") <= as_of_date
+    ]
+    principal_by_date = {}
+    for payment in active_payments:
+        payment_date = _get(payment, "payment_date")
+        principal_amount = Decimal(_get(payment, "principal_amount"))
+        if principal_amount > 0:
+            principal_by_date[payment_date] = principal_by_date.get(payment_date, Decimal("0.00")) + principal_amount
+
+    pause_ranges = _paused_ranges(edit_logs, as_of_date, pledge_date)
+    charged_by_month = {}
+    entries = []
+    charged_interest = Decimal("0.00")
+    for payment in sorted(active_payments, key=lambda item: (
+        _get(item, "payment_date"),
+        _get(item, "recorded_at").isoformat() if _get(item, "recorded_at") else "",
+        _get(item, "id", 0),
+    )):
+        interest_amount = Decimal(_get(payment, "interest_amount"))
+        if interest_amount <= 0:
+            continue
+        payment_date = _get(payment, "payment_date")
+        year, month, day = (int(part) for part in ad_to_bs(payment_date).split("-"))
+        if day <= 30:
+            continue
+        day_number = bs_elapsed_days(pledge_date, payment_date)
+        if day_number <= upfront_days or _is_paused_day(day_number, pause_ranges):
+            continue
+        month_key = (year, month)
+        previous_extra_days = charged_by_month.get(month_key, 0)
+        new_extra_days = max(previous_extra_days, day - 30) - previous_extra_days
+        charged_by_month[month_key] = max(previous_extra_days, day - 30)
+        if new_extra_days <= 0:
+            continue
+
+        principal_used = principal - sum(
+            (amount for event_date, amount in principal_by_date.items() if event_date <= payment_date),
+            Decimal("0.00"),
+        )
+        amount = daily_interest_amount(principal_used, daily_percent, divisor) * new_extra_days
+        charged_interest += amount
+        entries.append({
+            "kind": "MONTH_END_EXTRA",
+            "start_date": payment_date,
+            "end_date": payment_date,
+            "days": new_extra_days,
+            "principal_used": principal_used,
+            "rate": f"{daily_percent:.2f}% / {divisor} days",
+            "interest": amount,
+        })
+
+    return entries, charged_by_month, charged_interest
+
+
+def month_end_extra_due(pledge, payments, edit_logs, as_of_date, outstanding_principal):
+    pledge_date = _get(pledge, "pledge_date")
+    upfront_days = int(_get(pledge, "upfront_days"))
+    year, month, day = (int(part) for part in ad_to_bs(as_of_date).split("-"))
+    if day <= 30:
+        return None
+
+    day_number = bs_elapsed_days(pledge_date, as_of_date)
+    pause_ranges = _paused_ranges(edit_logs, as_of_date, pledge_date)
+    if day_number <= upfront_days or _is_paused_day(day_number, pause_ranges):
+        return None
+
+    _, charged_by_month, _ = _month_end_extra_entries(
+        pledge, payments, edit_logs, as_of_date,
+    )
+    remaining_days = max(0, day - 30 - charged_by_month.get((year, month), 0))
+    if remaining_days == 0:
+        return None
+
+    daily_amount = daily_interest_amount(
+        outstanding_principal,
+        _get(pledge, "daily_percent"),
+        _get(pledge, "daily_divisor"),
+    )
+    return {
+        "days": remaining_days,
+        "amount": daily_amount * remaining_days,
+    }
 
 
 def _daily_interest_schedule(pledge, payments, edit_logs, as_of_date):
@@ -60,7 +159,6 @@ def _daily_interest_schedule(pledge, payments, edit_logs, as_of_date):
     daily_percent = Decimal(_get(pledge, "daily_percent"))
     divisor = int(_get(pledge, "daily_divisor"))
     payments = [payment for payment in payments if not _get(payment, "is_voided", False)]
-    first_daily_date = pledge_date + timedelta(days=upfront_days)
     principal_events = {}
     interest_paid_by_date = Decimal("0.00")
     for payment in payments:
@@ -72,39 +170,63 @@ def _daily_interest_schedule(pledge, payments, edit_logs, as_of_date):
             principal_events[payment_date] = principal_events.get(payment_date, Decimal("0.00")) + principal_amount
         interest_paid_by_date += Decimal(_get(payment, "interest_amount"))
 
-    principal_before_daily = sum(
-        (amount for payment_date, amount in principal_events.items() if payment_date < first_daily_date),
+    balance = principal - sum(
+        (amount for payment_date, amount in principal_events.items() if payment_date < pledge_date),
         Decimal("0.00"),
     )
-    balance = principal - principal_before_daily
-    pause_ranges = _paused_ranges(edit_logs, as_of_date)
+    pause_ranges = _paused_ranges(edit_logs, as_of_date, pledge_date)
     daily_rows = []
-    current_date = first_daily_date
+    current_date = pledge_date
+    previous_day_number = 0
     while current_date <= as_of_date:
         start_balance = balance
         principal_paid = principal_events.get(current_date, Decimal("0.00"))
         end_balance = start_balance - principal_paid
-        paused = any(start <= current_date <= end for start, end in pause_ranges)
-        if paused:
-            start_interest = Decimal("0.00")
-            end_interest = Decimal("0.00")
-        else:
-            start_interest = daily_interest_amount(start_balance, daily_percent, divisor)
+        day_number = bs_elapsed_days(pledge_date, current_date)
+        new_day_numbers = range(max(previous_day_number + 1, upfront_days + 1), day_number + 1)
+        rows_for_date = []
+        for accrued_day_number in new_day_numbers:
+            paused = _is_paused_day(accrued_day_number, pause_ranges)
+            row = {
+                "date": current_date,
+                "start_balance": start_balance,
+                "end_balance": end_balance,
+                "principal_paid": Decimal("0.00"),
+                "paused": paused,
+                "days": 1,
+                "start_interest": Decimal("0.00") if paused else daily_interest_amount(
+                    start_balance, daily_percent, divisor,
+                ),
+                "end_interest": Decimal("0.00"),
+            }
+            daily_rows.append(row)
+            rows_for_date.append(row)
+
+        if principal_paid > 0 and day_number > upfront_days and not _is_paused_day(day_number, pause_ranges):
             end_interest = (
                 daily_interest_amount(end_balance, daily_percent, divisor)
-                if principal_paid > 0 and end_balance > 0
-                else Decimal("0.00")
+                if end_balance > 0 else Decimal("0.00")
             )
-        daily_rows.append({
-            "date": current_date,
-            "start_balance": start_balance,
-            "end_balance": end_balance,
-            "principal_paid": principal_paid,
-            "paused": paused,
-            "start_interest": start_interest,
-            "end_interest": end_interest,
-        })
+            if rows_for_date:
+                payment_row = rows_for_date[-1]
+                payment_row["principal_paid"] = principal_paid
+                payment_row["end_interest"] = end_interest
+            else:
+                daily_rows.append({
+                    "date": current_date,
+                    "start_balance": start_balance,
+                    "end_balance": end_balance,
+                    "principal_paid": principal_paid,
+                    "paused": False,
+                    "days": 0,
+                    "start_interest": Decimal("0.00"),
+                    "end_interest": end_interest,
+                })
+        elif principal_paid > 0 and rows_for_date:
+            rows_for_date[-1]["principal_paid"] = principal_paid
+
         balance = end_balance
+        previous_day_number = day_number
         current_date += timedelta(days=1)
 
     outstanding_principal = principal - sum(principal_events.values(), Decimal("0.00"))
@@ -112,12 +234,14 @@ def _daily_interest_schedule(pledge, payments, edit_logs, as_of_date):
 
 
 def calculate_pledge_interest(pledge, payments, edit_logs, as_of_date):
+    payments = list(payments)
+    edit_logs = list(edit_logs)
     pledge_date = _get(pledge, "pledge_date")
     principal = Decimal(_get(pledge, "principal_amount"))
     upfront_percent = Decimal(_get(pledge, "upfront_percent"))
     daily_percent = Decimal(_get(pledge, "daily_percent"))
     divisor = int(_get(pledge, "daily_divisor"))
-    first_daily_date = pledge_date + timedelta(days=int(_get(pledge, "upfront_days")))
+    upfront_days = int(_get(pledge, "upfront_days"))
     daily_rows, _, outstanding_principal, interest_paid = _daily_interest_schedule(
         pledge, payments, edit_logs, as_of_date,
     )
@@ -126,14 +250,19 @@ def calculate_pledge_interest(pledge, payments, edit_logs, as_of_date):
         (row["start_interest"] + row["end_interest"] for row in daily_rows),
         Decimal("0.00"),
     )
-    daily_active = (
-        as_of_date >= first_daily_date
-        and not any(start <= as_of_date <= end for start, end in _paused_ranges(edit_logs, as_of_date))
+    _, _, extra_interest = _month_end_extra_entries(
+        pledge, payments, edit_logs, as_of_date,
     )
-    interest_earned = upfront + daily_interest
+    day_number = bs_elapsed_days(pledge_date, as_of_date)
+    pause_ranges = _paused_ranges(edit_logs, as_of_date, pledge_date)
+    daily_active = (
+        day_number > upfront_days
+        and not _is_paused_day(day_number, pause_ranges)
+    )
+    interest_earned = upfront + daily_interest + extra_interest
     unpaid_interest = interest_earned - interest_paid
     return {
-        "day_number": max((as_of_date - pledge_date).days + 1, 0),
+        "day_number": max(day_number, 0),
         "upfront_interest": upfront,
         "daily_interest": daily_interest,
         "daily_amount": daily_interest_amount(outstanding_principal, daily_percent, divisor) if daily_active else Decimal("0.00"),
@@ -146,12 +275,14 @@ def calculate_pledge_interest(pledge, payments, edit_logs, as_of_date):
 
 
 def calculate_pledge_interest_breakdown(pledge, payments, edit_logs, as_of_date):
+    payments = list(payments)
+    edit_logs = list(edit_logs)
     pledge_date = _get(pledge, "pledge_date")
     principal = Decimal(_get(pledge, "principal_amount"))
     upfront_percent = Decimal(_get(pledge, "upfront_percent"))
     daily_percent = Decimal(_get(pledge, "daily_percent"))
     divisor = int(_get(pledge, "daily_divisor"))
-    first_daily_date = pledge_date + timedelta(days=int(_get(pledge, "upfront_days")))
+    upfront_days = int(_get(pledge, "upfront_days"))
     daily_rows, principal_events, _, _ = _daily_interest_schedule(
         pledge, payments, edit_logs, as_of_date,
     )
@@ -161,8 +292,8 @@ def calculate_pledge_interest_breakdown(pledge, payments, edit_logs, as_of_date)
         rows.append({
             "kind": "UPFRONT",
             "start_date": pledge_date,
-            "end_date": pledge_date + timedelta(days=max(int(_get(pledge, "upfront_days")) - 1, 0)),
-            "days": int(_get(pledge, "upfront_days")),
+            "end_date": bs_date_after_360_days(pledge_date, upfront_days),
+            "days": upfront_days,
             "principal_used": principal,
             "rate": f"{upfront_percent:.2f}% once",
             "interest": round_money(principal * upfront_percent / HUNDRED),
@@ -205,7 +336,7 @@ def calculate_pledge_interest_breakdown(pledge, payments, edit_logs, as_of_date)
             }
 
         current_period["end_date"] = day["date"]
-        current_period["days"] += 1
+        current_period["days"] += day["days"]
         current_period["interest"] += day["start_interest"]
 
         if payment_today:
@@ -221,14 +352,27 @@ def calculate_pledge_interest_breakdown(pledge, payments, edit_logs, as_of_date)
                 "rate": "",
                 "interest": Decimal("0.00"),
             })
-            current_period = {
-                "start_date": day["date"],
-                "end_date": day["date"],
-                "principal_used": day["end_balance"],
-                "paused": day["paused"],
-                "days": 1,
-                "interest": day["end_interest"],
-            }
+            if day["days"] == 0:
+                if day["end_interest"] > 0:
+                    rows.append({
+                        "kind": "DAILY",
+                        "start_date": day["date"],
+                        "end_date": day["date"],
+                        "days": 1,
+                        "principal_used": day["end_balance"],
+                        "rate": f"{daily_percent:.2f}% / {divisor} days",
+                        "interest": day["end_interest"],
+                    })
+                current_period = None
+            else:
+                current_period = {
+                    "start_date": day["date"],
+                    "end_date": day["date"],
+                    "principal_used": day["end_balance"],
+                    "paused": day["paused"],
+                    "days": 1,
+                    "interest": day["end_interest"],
+                }
         elif current_period is not None:
             current_period["principal_used"] = day["start_balance"]
 
@@ -236,7 +380,7 @@ def calculate_pledge_interest_breakdown(pledge, payments, edit_logs, as_of_date)
         append_period(current_period)
 
     for payment_date, amount in principal_events.items():
-        if payment_date < first_daily_date:
+        if bs_elapsed_days(pledge_date, payment_date) <= upfront_days:
             new_principal = principal - sum(
                 (event_amount for event_day, event_amount in principal_events.items() if event_day <= payment_date),
                 Decimal("0.00"),
@@ -252,6 +396,9 @@ def calculate_pledge_interest_breakdown(pledge, payments, edit_logs, as_of_date)
                 "rate": "",
                 "interest": Decimal("0.00"),
             })
+
+    extra_entries, _, _ = _month_end_extra_entries(pledge, payments, edit_logs, as_of_date)
+    rows.extend(extra_entries)
 
     if rows:
         upfront_rows = [row for row in rows if row["kind"] == "UPFRONT"]

@@ -2,24 +2,37 @@ from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 import uuid
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.urls import reverse
-from django.test import TransactionTestCase
+from django.test import SimpleTestCase, TransactionTestCase
 from rest_framework.test import APITestCase
 
 from accounts.models import BusinessSource, Customer, User
 
-from .bs_dates import ad_to_bs, bs_month_calendar, bs_to_ad
-from .interest import calculate_pledge_interest, calculate_pledge_interest_breakdown
+from .bs_dates import (
+    ad_to_bs,
+    bs_date_after_360_days,
+    bs_elapsed_days,
+    bs_month_calendar,
+    bs_to_ad,
+)
+from .interest import (
+    calculate_pledge_interest,
+    calculate_pledge_interest_breakdown,
+    month_end_extra_due,
+)
 from .models import Pledge, PledgeEditLog, PledgeItem, PledgePayment, nepal_today
-from .serializers import pledge_financial_summary
+from .serializers import business_source_financial_summary, pledge_age_data, pledge_financial_summary
 
 
 class InterestCalculationTests(APITestCase):
-    def pledge(self, principal="100000.00", *, source_type="INDIVIDUAL", date_value=date(2026, 1, 1), **terms):
+    def pledge(self, principal="100000.00", *, source_type="INDIVIDUAL", date_value=None, **terms):
+        if date_value is None:
+            date_value = bs_to_ad("2083-01-01")
         preset = {
             "INDIVIDUAL": ("2.00", 30, "2.00", 30),
             "COMPANY": ("1.00", 15, "2.00", 30),
@@ -28,6 +41,9 @@ class InterestCalculationTests(APITestCase):
         defaults.update(terms)
         return SimpleNamespace(pledge_date=date_value, principal_amount=Decimal(principal), **defaults)
 
+    def after(self, start, days):
+        return bs_date_after_360_days(start, days)
+
     def calc(self, pledge, as_of, payments=(), logs=()):
         return calculate_pledge_interest(pledge, payments, logs, as_of)
 
@@ -35,9 +51,10 @@ class InterestCalculationTests(APITestCase):
         pledge = self.pledge()
         start = pledge.pledge_date
         self.assertEqual(self.calc(pledge, start)["interest_earned"], Decimal("2000.00"))
-        self.assertEqual(self.calc(pledge, start + timedelta(days=29))["interest_earned"], Decimal("2000.00"))
-        self.assertEqual(self.calc(pledge, start + timedelta(days=30))["interest_earned"], Decimal("2066.67"))
-        payment_date = start + timedelta(days=59)
+        self.assertEqual(self.calc(pledge, self.after(start, 29))["interest_earned"], Decimal("2000.00"))
+        self.assertEqual(self.calc(pledge, self.after(start, 30))["interest_earned"], Decimal("2000.00"))
+        self.assertEqual(self.calc(pledge, self.after(start, 31))["interest_earned"], Decimal("2066.67"))
+        payment_date = self.after(start, 60)
         self.assertEqual(self.calc(pledge, payment_date)["interest_earned"], Decimal("4000.10"))
         payment = {
             "payment_date": payment_date,
@@ -48,13 +65,13 @@ class InterestCalculationTests(APITestCase):
         on_payment_day = self.calc(pledge, payment_date, [payment])
         self.assertEqual(on_payment_day["interest_earned"], Decimal("4033.43"))
         self.assertEqual(on_payment_day["outstanding_principal"], Decimal("50000.00"))
-        self.assertEqual(self.calc(pledge, payment_date + timedelta(days=1), [payment])["interest_earned"], Decimal("4066.76"))
-        self.assertEqual(self.calc(pledge, payment_date + timedelta(days=2), [payment])["interest_earned"], Decimal("4100.09"))
+        self.assertEqual(self.calc(pledge, self.after(start, 61), [payment])["interest_earned"], Decimal("4066.76"))
+        self.assertEqual(self.calc(pledge, self.after(start, 62), [payment])["interest_earned"], Decimal("4100.09"))
 
     def test_company_same_day_principal_payment_charges_both_balances(self):
         pledge = self.pledge(source_type="COMPANY")
         start = pledge.pledge_date
-        payment_date = start + timedelta(days=59)
+        payment_date = self.after(start, 60)
         payment = {
             "payment_date": payment_date,
             "interest_amount": Decimal("0.00"),
@@ -65,8 +82,8 @@ class InterestCalculationTests(APITestCase):
         after = self.calc(pledge, payment_date, [payment])
         self.assertEqual(before, Decimal("4000.15"))
         self.assertEqual(after["interest_earned"], Decimal("4033.48"))
-        self.assertEqual(self.calc(pledge, payment_date + timedelta(days=1), [payment])["interest_earned"], Decimal("4066.81"))
-        self.assertEqual(self.calc(pledge, payment_date + timedelta(days=2), [payment])["interest_earned"], Decimal("4100.14"))
+        self.assertEqual(self.calc(pledge, self.after(start, 61), [payment])["interest_earned"], Decimal("4066.81"))
+        self.assertEqual(self.calc(pledge, self.after(start, 62), [payment])["interest_earned"], Decimal("4100.14"))
         self.assertEqual(after["outstanding_principal"], Decimal("50000.00"))
 
     def test_dynamic_same_day_principal_payment_uses_copied_dynamic_terms(self):
@@ -78,7 +95,7 @@ class InterestCalculationTests(APITestCase):
             daily_divisor=30,
         )
         start = pledge.pledge_date
-        payment_date = start + timedelta(days=59)
+        payment_date = self.after(start, 60)
         payment = {
             "payment_date": payment_date,
             "interest_amount": Decimal("0.00"),
@@ -89,29 +106,29 @@ class InterestCalculationTests(APITestCase):
         after = self.calc(pledge, payment_date, [payment])
         self.assertEqual(before, Decimal("4000.10"))
         self.assertEqual(after["interest_earned"], Decimal("4033.43"))
-        self.assertEqual(self.calc(pledge, payment_date + timedelta(days=1), [payment])["interest_earned"], Decimal("4066.76"))
-        self.assertEqual(self.calc(pledge, payment_date + timedelta(days=2), [payment])["interest_earned"], Decimal("4100.09"))
+        self.assertEqual(self.calc(pledge, self.after(start, 61), [payment])["interest_earned"], Decimal("4066.76"))
+        self.assertEqual(self.calc(pledge, self.after(start, 62), [payment])["interest_earned"], Decimal("4100.09"))
         self.assertEqual(after["outstanding_principal"], Decimal("50000.00"))
 
     def test_breakdown_overlaps_payment_day_and_marks_new_balance(self):
         pledge = self.pledge()
         start = pledge.pledge_date
         payment = {
-            "payment_date": start + timedelta(days=59),
+            "payment_date": self.after(start, 60),
             "interest_amount": Decimal("0.00"),
             "principal_amount": Decimal("50000.00"),
             "is_voided": False,
         }
         rows = calculate_pledge_interest_breakdown(
-            pledge, [payment], [], start + timedelta(days=61),
+            pledge, [payment], [], self.after(start, 62),
         )
         self.assertEqual(
             [(row["kind"], row["start_date"], row["end_date"], row["days"], row["principal_used"], row["interest"]) for row in rows],
             [
-                ("UPFRONT", start, start + timedelta(days=29), 30, Decimal("100000.00"), Decimal("2000.00")),
-                ("DAILY", start + timedelta(days=30), start + timedelta(days=59), 30, Decimal("100000.00"), Decimal("2000.10")),
-                ("PRINCIPAL_PAYMENT", start + timedelta(days=59), start + timedelta(days=59), 0, Decimal("50000.00"), Decimal("0.00")),
-                ("DAILY", start + timedelta(days=59), start + timedelta(days=61), 3, Decimal("50000.00"), Decimal("99.99")),
+                ("UPFRONT", start, self.after(start, 30), 30, Decimal("100000.00"), Decimal("2000.00")),
+                ("DAILY", self.after(start, 31), self.after(start, 60), 30, Decimal("100000.00"), Decimal("2000.10")),
+                ("PRINCIPAL_PAYMENT", self.after(start, 60), self.after(start, 60), 0, Decimal("50000.00"), Decimal("0.00")),
+                ("DAILY", self.after(start, 60), self.after(start, 62), 3, Decimal("50000.00"), Decimal("99.99")),
             ],
         )
         marker = rows[2]
@@ -125,53 +142,73 @@ class InterestCalculationTests(APITestCase):
         start = pledge.pledge_date
         payments = [
             {
-                "payment_date": start + timedelta(days=59),
+                "payment_date": self.after(start, 60),
                 "interest_amount": Decimal("0.00"),
                 "principal_amount": Decimal("50000.00"),
                 "is_voided": False,
             },
             {
-                "payment_date": start + timedelta(days=69),
+                "payment_date": self.after(start, 70),
                 "interest_amount": Decimal("0.00"),
                 "principal_amount": Decimal("10000.00"),
                 "is_voided": False,
             },
         ]
         rows = calculate_pledge_interest_breakdown(
-            pledge, payments, [], start + timedelta(days=70),
+            pledge, payments, [], self.after(start, 71),
         )
         daily = [row for row in rows if row["kind"] == "DAILY"]
         self.assertEqual([(row["start_date"], row["end_date"], row["principal_used"]) for row in daily], [
-            (start + timedelta(days=30), start + timedelta(days=59), Decimal("100000.00")),
-            (start + timedelta(days=59), start + timedelta(days=69), Decimal("50000.00")),
-            (start + timedelta(days=69), start + timedelta(days=70), Decimal("40000.00")),
+            (self.after(start, 31), self.after(start, 60), Decimal("100000.00")),
+            (self.after(start, 60), self.after(start, 70), Decimal("50000.00")),
+            (self.after(start, 70), self.after(start, 71), Decimal("40000.00")),
         ])
 
     def test_company_upfront_period(self):
         pledge = self.pledge(source_type="COMPANY")
         start = pledge.pledge_date
         self.assertEqual(self.calc(pledge, start)["interest_earned"], Decimal("1000.00"))
-        self.assertEqual(self.calc(pledge, start + timedelta(days=14))["interest_earned"], Decimal("1000.00"))
-        self.assertEqual(self.calc(pledge, start + timedelta(days=15))["interest_earned"], Decimal("1066.67"))
+        self.assertEqual(self.calc(pledge, self.after(start, 14))["interest_earned"], Decimal("1000.00"))
+        self.assertEqual(self.calc(pledge, self.after(start, 15))["interest_earned"], Decimal("1000.00"))
+        self.assertEqual(self.calc(pledge, self.after(start, 16))["interest_earned"], Decimal("1066.67"))
+
+    def test_company_terms_and_month_end_extra_use_bs_dates(self):
+        pledge = self.pledge(source_type="COMPANY", date_value=bs_to_ad("2083-05-05"))
+        self.assertEqual(
+            self.calc(pledge, bs_to_ad("2083-05-20"))["interest_earned"],
+            Decimal("1000.00"),
+        )
+        self.assertEqual(
+            self.calc(pledge, bs_to_ad("2083-05-21"))["interest_earned"],
+            Decimal("1066.67"),
+        )
+        extra = month_end_extra_due(
+            pledge,
+            [],
+            [],
+            bs_to_ad("2083-05-31"),
+            Decimal("100000.00"),
+        )
+        self.assertEqual(extra, {"days": 1, "amount": Decimal("66.67")})
 
     def test_principal_payment_inside_upfront_period_keeps_upfront_fixed(self):
         pledge = self.pledge()
         payment = {
-            "payment_date": pledge.pledge_date + timedelta(days=9),
+            "payment_date": self.after(pledge.pledge_date, 9),
             "interest_amount": Decimal("0.00"),
             "principal_amount": Decimal("50000.00"),
             "is_voided": False,
         }
-        result = self.calc(pledge, pledge.pledge_date + timedelta(days=30), [payment])
+        result = self.calc(pledge, self.after(pledge.pledge_date, 30), [payment])
         self.assertEqual(result["upfront_interest"], Decimal("2000.00"))
-        self.assertEqual(result["daily_interest"], Decimal("33.33"))
+        self.assertEqual(result["daily_interest"], Decimal("0.00"))
         self.assertEqual(result["outstanding_principal"], Decimal("50000.00"))
-        self.assertEqual(result["interest_earned"], Decimal("2033.33"))
+        self.assertEqual(result["interest_earned"], Decimal("2000.00"))
 
     def test_same_day_principal_payments_charge_opening_and_final_balance_once(self):
         pledge = self.pledge()
         start = pledge.pledge_date
-        payment_date = start + timedelta(days=59)
+        payment_date = self.after(start, 60)
         payments = [
             {"payment_date": payment_date, "interest_amount": Decimal("0.00"), "principal_amount": Decimal("20000.00"), "is_voided": False},
             {"payment_date": payment_date, "interest_amount": Decimal("0.00"), "principal_amount": Decimal("30000.00"), "is_voided": False},
@@ -189,7 +226,7 @@ class InterestCalculationTests(APITestCase):
 
     def test_payment_that_clears_principal_charges_only_start_balance_today(self):
         pledge = self.pledge()
-        payment_date = pledge.pledge_date + timedelta(days=59)
+        payment_date = self.after(pledge.pledge_date, 60)
         payment = {
             "payment_date": payment_date,
             "interest_amount": Decimal("0.00"),
@@ -197,14 +234,14 @@ class InterestCalculationTests(APITestCase):
             "is_voided": False,
         }
         on_payment_day = self.calc(pledge, payment_date, [payment])
-        next_day = self.calc(pledge, payment_date + timedelta(days=1), [payment])
+        next_day = self.calc(pledge, self.after(pledge.pledge_date, 61), [payment])
         self.assertEqual(on_payment_day["interest_earned"], Decimal("4000.10"))
         self.assertEqual(on_payment_day["outstanding_principal"], Decimal("0.00"))
         self.assertEqual(next_day["interest_earned"], Decimal("4000.10"))
 
     def test_zero_rate(self):
         pledge = self.pledge(upfront_percent="0.00", daily_percent="0.00")
-        result = self.calc(pledge, pledge.pledge_date + timedelta(days=90))
+        result = self.calc(pledge, self.after(pledge.pledge_date, 90))
         self.assertEqual(result["interest_earned"], Decimal("0.00"))
         self.assertEqual(result["total_outstanding"], Decimal("100000.00"))
 
@@ -212,40 +249,225 @@ class InterestCalculationTests(APITestCase):
         pledge = self.pledge()
         start = pledge.pledge_date
         logs = [
-            {"field": "status", "old_value": "ACTIVE", "new_value": "FORFEITED", "effective_date": start + timedelta(days=59), "id": 1},
-            {"field": "status", "old_value": "FORFEITED", "new_value": "ACTIVE", "effective_date": start + timedelta(days=99), "id": 2},
+            {"field": "status", "old_value": "ACTIVE", "new_value": "FORFEITED", "effective_date": self.after(start, 60), "id": 1},
+            {"field": "status", "old_value": "FORFEITED", "new_value": "ACTIVE", "effective_date": self.after(start, 100), "id": 2},
         ]
-        result = self.calc(pledge, start + timedelta(days=120), logs=logs)
-        self.assertEqual(result["interest_earned"], Decimal("5466.84"))
+        result = self.calc(pledge, self.after(start, 120), logs=logs)
+        self.assertEqual(result["interest_earned"], Decimal("5400.17"))
 
     def test_breakdown_shows_paused_period_when_forfeited_and_reopened(self):
         pledge = self.pledge()
         start = pledge.pledge_date
         logs = [
-            {"field": "status", "old_value": "ACTIVE", "new_value": "FORFEITED", "effective_date": start + timedelta(days=59), "id": 1},
-            {"field": "status", "old_value": "FORFEITED", "new_value": "ACTIVE", "effective_date": start + timedelta(days=99), "id": 2},
+            {"field": "status", "old_value": "ACTIVE", "new_value": "FORFEITED", "effective_date": self.after(start, 60), "id": 1},
+            {"field": "status", "old_value": "FORFEITED", "new_value": "ACTIVE", "effective_date": self.after(start, 100), "id": 2},
         ]
         rows = calculate_pledge_interest_breakdown(
-            pledge, [], logs, start + timedelta(days=120),
+            pledge, [], logs, self.after(start, 120),
         )
         self.assertEqual(
             [(row["kind"], row["days"], row["interest"]) for row in rows[1:]],
             [
                 ("DAILY", 30, Decimal("2000.10")),
                 ("PAUSED", 39, Decimal("0.00")),
-                ("DAILY", 22, Decimal("1466.74")),
+                ("DAILY", 21, Decimal("1400.07")),
             ],
         )
 
     def test_forfeit_and_reopen_same_day_has_no_pause_days(self):
         pledge = self.pledge()
-        day = pledge.pledge_date + timedelta(days=59)
+        day = self.after(pledge.pledge_date, 60)
         logs = [
             {"field": "status", "old_value": "ACTIVE", "new_value": "FORFEITED", "effective_date": day, "id": 1},
             {"field": "status", "old_value": "FORFEITED", "new_value": "ACTIVE", "effective_date": day, "id": 2},
         ]
-        result = self.calc(pledge, day + timedelta(days=1), logs=logs)
+        result = self.calc(pledge, self.after(pledge.pledge_date, 61), logs=logs)
         self.assertEqual(result["interest_earned"], Decimal("4066.77"))
+
+    def test_30_360_day_zero_upfront_and_bs_month_end_boundaries(self):
+        pledge = self.pledge(date_value=bs_to_ad("2083-01-01"))
+        dates = {
+            "day_30": bs_to_ad("2083-02-01"),
+            "day_31": bs_to_ad("2083-02-02"),
+            "month_3_day_30": bs_to_ad("2083-03-30"),
+            "month_3_day_31": bs_to_ad("2083-03-31"),
+            "month_3_day_32": bs_to_ad("2083-03-32"),
+            "month_4_day_1": bs_to_ad("2083-04-01"),
+        }
+        self.assertEqual(bs_elapsed_days(pledge.pledge_date, pledge.pledge_date), 0)
+        self.assertEqual(self.calc(pledge, dates["day_30"])["interest_earned"], Decimal("2000.00"))
+        self.assertEqual(self.calc(pledge, dates["day_31"])["interest_earned"], Decimal("2066.67"))
+        self.assertEqual(self.calc(pledge, dates["month_3_day_30"])["interest_earned"], Decimal("5933.53"))
+        self.assertEqual(
+            self.calc(pledge, dates["month_3_day_31"])["interest_earned"],
+            Decimal("5933.53"),
+        )
+        self.assertEqual(
+            self.calc(pledge, dates["month_3_day_32"])["interest_earned"],
+            Decimal("5933.53"),
+        )
+        self.assertEqual(self.calc(pledge, dates["month_4_day_1"])["interest_earned"], Decimal("6000.20"))
+
+    def test_month_end_extra_is_payable_only_once_charged_by_interest_payment(self):
+        pledge = self.pledge(date_value=bs_to_ad("2083-01-01"))
+        day_31 = bs_to_ad("2083-03-31")
+        day_32 = bs_to_ad("2083-03-32")
+        before_payment = self.calc(pledge, day_31)
+        extra = month_end_extra_due(
+            pledge, [], [], day_31, before_payment["outstanding_principal"],
+        )
+        self.assertEqual(before_payment["interest_earned"], Decimal("5933.53"))
+        self.assertEqual(extra, {"days": 1, "amount": Decimal("66.67")})
+
+        one_day_payment = {
+            "payment_date": day_31,
+            "interest_amount": Decimal("6000.20"),
+            "principal_amount": Decimal("0.00"),
+            "is_voided": False,
+        }
+        charged = self.calc(pledge, day_31, [one_day_payment])
+        self.assertEqual(charged["interest_earned"], Decimal("6000.20"))
+        self.assertEqual(charged["unpaid_interest"], Decimal("0.00"))
+        extra_row = [
+            row for row in calculate_pledge_interest_breakdown(
+                pledge, [one_day_payment], [], day_31,
+            )
+            if row["kind"] == "MONTH_END_EXTRA"
+        ]
+        self.assertEqual([(row["days"], row["interest"]) for row in extra_row], [
+            (1, Decimal("66.67")),
+        ])
+
+        two_day_extra = month_end_extra_due(
+            pledge, [], [], day_32, self.calc(pledge, day_32)["outstanding_principal"],
+        )
+        self.assertEqual(two_day_extra, {"days": 2, "amount": Decimal("133.34")})
+        self.assertEqual(
+            self.calc(pledge, day_32)["unpaid_interest"] + two_day_extra["amount"],
+            Decimal("6066.87"),
+        )
+        two_day_payment = {
+            "payment_date": day_32,
+            "interest_amount": Decimal("6066.87"),
+            "principal_amount": Decimal("0.00"),
+            "is_voided": False,
+        }
+        self.assertEqual(
+            self.calc(pledge, bs_to_ad("2083-04-01"), [two_day_payment])["interest_earned"],
+            Decimal("6133.54"),
+        )
+        self.assertIsNone(month_end_extra_due(
+            pledge,
+            [],
+            [],
+            bs_to_ad("2083-03-30"),
+            self.calc(pledge, bs_to_ad("2083-03-30"))["outstanding_principal"],
+        ))
+        self.assertIsNone(month_end_extra_due(
+            pledge,
+            [],
+            [],
+            bs_to_ad("2083-04-01"),
+            self.calc(pledge, bs_to_ad("2083-04-01"))["outstanding_principal"],
+        ))
+
+    def test_month_end_extra_increment_and_upfront_exclusion(self):
+        pledge = self.pledge(date_value=bs_to_ad("2083-01-01"))
+        day_31 = bs_to_ad("2083-03-31")
+        day_32 = bs_to_ad("2083-03-32")
+        first = {
+            "payment_date": day_31,
+            "interest_amount": Decimal("6000.20"),
+            "principal_amount": Decimal("0.00"),
+            "is_voided": False,
+        }
+        incremental = month_end_extra_due(
+            pledge, [first], [], day_32, self.calc(pledge, day_32, [first])["outstanding_principal"],
+        )
+        self.assertEqual(incremental, {"days": 1, "amount": Decimal("66.67")})
+        second_payment = {
+            "payment_date": day_32,
+            "interest_amount": Decimal("66.67"),
+            "principal_amount": Decimal("0.00"),
+            "is_voided": False,
+        }
+        charged_rows = [
+            row for row in calculate_pledge_interest_breakdown(
+                pledge, [first, second_payment], [], day_32,
+            )
+            if row["kind"] == "MONTH_END_EXTRA"
+        ]
+        self.assertEqual(
+            [(row["days"], row["interest"]) for row in charged_rows],
+            [(1, Decimal("66.67")), (1, Decimal("66.67"))],
+        )
+
+        upfront_pledge = self.pledge(
+            date_value=bs_to_ad("2083-03-01"),
+            upfront_days=30,
+        )
+        upfront_date = bs_to_ad("2083-03-31")
+        upfront_extra = month_end_extra_due(
+            upfront_pledge, [], [], upfront_date,
+            self.calc(upfront_pledge, upfront_date)["outstanding_principal"],
+        )
+        self.assertIsNone(upfront_extra)
+
+    def test_long_month_end_extra_after_april_30_and_31(self):
+        pledge = self.pledge(date_value=bs_to_ad("2083-03-01"))
+        april_30 = bs_to_ad("2083-04-30")
+        april_31 = bs_to_ad("2083-04-31")
+        self.assertEqual(self.calc(pledge, april_30)["interest_earned"], Decimal("3933.43"))
+        april_extra = month_end_extra_due(
+            pledge, [], [], april_31, self.calc(pledge, april_31)["outstanding_principal"],
+        )
+        self.assertEqual(april_extra, {"days": 1, "amount": Decimal("66.67")})
+
+        interest_payment = {
+            "payment_date": april_31,
+            "interest_amount": Decimal("4000.10"),
+            "principal_amount": Decimal("0.00"),
+            "is_voided": False,
+        }
+        self.assertEqual(
+            self.calc(pledge, bs_to_ad("2083-05-01"), [interest_payment])["interest_earned"],
+            Decimal("4066.77"),
+        )
+
+    def test_dynamic_terms_and_principal_payment_do_not_create_month_end_extras(self):
+        pledge = self.pledge(
+            date_value=bs_to_ad("2083-05-05"),
+            upfront_percent="3.00",
+            upfront_days=20,
+            daily_percent="2.50",
+            daily_divisor=25,
+        )
+        day_31 = bs_to_ad("2083-05-31")
+        interest_payment = {
+            "payment_date": day_31,
+            "interest_amount": Decimal("3600.00"),
+            "principal_amount": Decimal("0.00"),
+            "is_voided": False,
+        }
+        charged = self.calc(pledge, day_31, [interest_payment])
+        self.assertEqual(charged["interest_earned"], Decimal("3600.00"))
+        self.assertEqual(
+            month_end_extra_due(
+                pledge, [], [], day_31, Decimal("100000.00"),
+            ),
+            {"days": 1, "amount": Decimal("100.00")},
+        )
+
+        principal_payment = {
+            "payment_date": day_31,
+            "interest_amount": Decimal("0.00"),
+            "principal_amount": Decimal("50000.00"),
+            "is_voided": False,
+        }
+        principal_rows = calculate_pledge_interest_breakdown(
+            pledge, [principal_payment], [], day_31,
+        )
+        self.assertFalse(any(row["kind"] == "MONTH_END_EXTRA" for row in principal_rows))
 
 
 class BikramSambatDateTests(APITestCase):
@@ -254,6 +476,16 @@ class BikramSambatDateTests(APITestCase):
             self.assertEqual(ad_to_bs(bs_to_ad(value)), value)
         self.assertEqual((bs_to_ad("2083-02-01") - bs_to_ad("2083-01-30")).days, 2)
         self.assertEqual((bs_to_ad("2084-01-01") - bs_to_ad("2083-12-30")).days, 1)
+
+    def test_elapsed_day_number_clamps_month_end_and_starts_at_zero(self):
+        self.assertEqual(bs_elapsed_days(bs_to_ad("2083-03-30"), bs_to_ad("2083-03-31")), 0)
+        self.assertEqual(bs_elapsed_days(bs_to_ad("2083-03-30"), bs_to_ad("2083-03-32")), 0)
+        self.assertEqual(bs_elapsed_days(bs_to_ad("2083-03-30"), bs_to_ad("2083-04-01")), 1)
+        self.assertEqual(bs_elapsed_days(bs_to_ad("2083-01-31"), bs_to_ad("2083-02-01")), 1)
+        self.assertEqual(
+            bs_elapsed_days(bs_to_ad("2083-01-30"), bs_to_ad("2083-02-01")),
+            bs_elapsed_days(bs_to_ad("2083-01-31"), bs_to_ad("2083-02-01")),
+        )
 
     def test_invalid_and_out_of_range_dates_are_rejected(self):
         for value in ("2083-13-01", "2083-02-32", "1974-12-31", "2101-01-01"):
@@ -272,6 +504,80 @@ class BikramSambatDateTests(APITestCase):
         for year, month in ((2083, 0), (2083, 13), (1974, 12), (2101, 1)):
             with self.subTest(year=year, month=month), self.assertRaises(ValueError):
                 bs_month_calendar(year, month)
+
+
+class PledgeAgeTests(SimpleTestCase):
+    def age(self, start, end, status=Pledge.Status.ACTIVE, edit_logs=()):
+        return pledge_age_data(
+            bs_to_ad(start),
+            status,
+            edit_logs,
+            bs_to_ad(end),
+        )
+
+    def test_age_uses_30_360_parts_and_omits_zero_parts(self):
+        examples = (
+            ("2083-07-23", "2083-08-01", {"years": 0, "months": 0, "days": 8, "text": "8 days"}),
+            ("2083-05-05", "2083-06-05", {"years": 0, "months": 1, "days": 0, "text": "1 month"}),
+            ("2083-01-01", "2083-03-30", {"years": 0, "months": 2, "days": 29, "text": "2 months 29 days"}),
+            ("2083-01-01", "2083-04-01", {"years": 0, "months": 3, "days": 0, "text": "3 months"}),
+            ("2083-01-01", "2084-01-01", {"years": 1, "months": 0, "days": 0, "text": "1 year"}),
+            ("2083-01-31", "2083-02-01", {"years": 0, "months": 0, "days": 1, "text": "1 day"}),
+            ("2083-01-01", "2083-01-01", {"years": 0, "months": 0, "days": 0, "text": "0 days"}),
+            ("2083-01-01", "2084-02-29", {"years": 1, "months": 1, "days": 28, "text": "1 year 1 month 28 days"}),
+        )
+        for start, end, expected in examples:
+            with self.subTest(start=start, end=end):
+                self.assertEqual(self.age(start, end), expected)
+
+    def test_age_clamps_as_of_day_31_and_32_to_day_30(self):
+        start = "2083-01-01"
+        day_30 = self.age(start, "2083-03-30")
+        day_31 = self.age(start, "2083-03-31")
+        day_32 = self.age(start, "2083-03-32")
+        self.assertEqual(day_31, day_30)
+        self.assertEqual(day_32, day_30)
+
+    def test_closed_and_forfeited_age_stops_at_terminal_status_date(self):
+        terminal_date = bs_to_ad("2083-08-01")
+        later_date = bs_to_ad("2083-10-01")
+        for status in (Pledge.Status.CLOSED, Pledge.Status.FORFEITED):
+            with self.subTest(status=status):
+                status_change = SimpleNamespace(
+                    field="status",
+                    new_value=status,
+                    effective_date=terminal_date,
+                    changed_at=None,
+                )
+                self.assertEqual(
+                    pledge_age_data(
+                        bs_to_ad("2083-07-23"),
+                        status,
+                        [status_change],
+                        later_date,
+                    ),
+                    {"years": 0, "months": 0, "days": 8, "text": "8 days"},
+                )
+
+    def test_reopened_active_pledge_uses_today_from_original_pledge_date(self):
+        logs = [
+            SimpleNamespace(
+                field="status",
+                new_value=Pledge.Status.FORFEITED,
+                effective_date=bs_to_ad("2083-05-20"),
+                changed_at=None,
+            ),
+            SimpleNamespace(
+                field="status",
+                new_value=Pledge.Status.ACTIVE,
+                effective_date=bs_to_ad("2083-05-25"),
+                changed_at=None,
+            ),
+        ]
+        self.assertEqual(
+            self.age("2083-05-05", "2083-06-05", edit_logs=logs),
+            {"years": 0, "months": 1, "days": 0, "text": "1 month"},
+        )
 
 
 class PledgeApiTests(APITestCase):
@@ -331,6 +637,7 @@ class PledgeApiTests(APITestCase):
     def test_authenticated_cashier_creates_pledge_and_freezes_source_terms(self):
         response = self.create_pledge()
         self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["age"], {"years": 0, "months": 0, "days": 0, "text": "0 days"})
         pledge = Pledge.objects.get(pk=response.data["id"])
         self.assertEqual(response.data["pledge_date"], ad_to_bs(pledge.pledge_date))
         self.assertEqual(pledge.upfront_percent, Decimal("2.00"))
@@ -509,14 +816,14 @@ class PledgeApiTests(APITestCase):
         self.assertEqual(pledge.principal_amount, Decimal("90000.00"))
 
     def test_individual_due_amounts_and_interest_payment_match_day_121_and_151(self):
-        start = nepal_today() - timedelta(days=150)
+        start = bs_to_ad("2083-01-01")
         created = self.create_pledge(pledge_date=ad_to_bs(start))
         self.assertEqual(created.status_code, 201, created.data)
         pledge_id = created.data["id"]
         payment_url = reverse("pledge-payment-list", args=[pledge_id])
         due_url = reverse("pledge-payment-due", args=[pledge_id])
-        day_121 = start + timedelta(days=120)
-        day_151 = start + timedelta(days=150)
+        day_121 = bs_date_after_360_days(start, 121)
+        day_151 = bs_date_after_360_days(start, 151)
 
         due_on_day_121 = self.client.get(due_url, {"as_of": ad_to_bs(day_121)})
         self.assertEqual(due_on_day_121.status_code, 200, due_on_day_121.data)
@@ -547,27 +854,31 @@ class PledgeApiTests(APITestCase):
         self.assertEqual(interest_payment.data["remaining_after"], "1033.23")
         self.assertEqual(interest_payment.data["recorded_by"], self.cashier.name)
 
-        pledge = self.client.get(reverse("pledge-detail", args=[pledge_id]))
+        with patch("pledges.serializers.nepal_today", return_value=day_151):
+            pledge = self.client.get(reverse("pledge-detail", args=[pledge_id]))
         self.assertEqual(pledge.status_code, 200, pledge.data)
         self.assertEqual(pledge.data["calculation"]["outstanding_principal"], "50000.00")
         self.assertEqual(pledge.data["calculation"]["unpaid_interest"], "1033.23")
         self.assertEqual(pledge.data["calculation"]["total_outstanding"], "51033.23")
 
     def test_pledge_summary_endpoint_returns_day_151_example_and_breakdown(self):
-        start = nepal_today() - timedelta(days=150)
+        start = bs_to_ad("2083-01-01")
+        day_121 = bs_date_after_360_days(start, 121)
+        day_151 = bs_date_after_360_days(start, 151)
         created = self.create_pledge(pledge_date=ad_to_bs(start))
         pledge = Pledge.objects.get(pk=created.data["id"])
         PledgePayment.objects.create(
             pledge=pledge,
-            payment_date=start + timedelta(days=120),
+            payment_date=day_121,
             type=PledgePayment.Type.PRINCIPAL,
             amount="50000.00",
             recorded_by=self.cashier,
         )
 
-        response = self.client.get(reverse("pledge-financial-summary", args=[pledge.pk]))
+        with patch("pledges.views.nepal_today", return_value=day_151):
+            response = self.client.get(reverse("pledge-financial-summary", args=[pledge.pk]))
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["as_of"], ad_to_bs(nepal_today()))
+        self.assertEqual(response.data["as_of"], ad_to_bs(day_151))
         self.assertEqual(response.data["summary"]["principal"], {
             "total": "100000.00", "paid": "50000.00", "due": "50000.00",
         })
@@ -607,51 +918,55 @@ class PledgeApiTests(APITestCase):
         })
 
     def test_same_day_principal_and_interest_payment_match_requested_summary(self):
-        start = nepal_today() - timedelta(days=117)
+        start = bs_to_ad("2083-01-01")
+        payment_date = bs_date_after_360_days(start, 117)
         created = self.create_pledge(pledge_date=ad_to_bs(start))
         self.assertEqual(created.status_code, 201, created.data)
         payment_url = reverse("pledge-payment-list", args=[created.data["id"]])
         principal_payment = self.client.post(payment_url, {
-            "payment_date": ad_to_bs(nepal_today()),
+            "payment_date": ad_to_bs(payment_date),
             "type": PledgePayment.Type.PRINCIPAL,
             "amount": "50000.00",
         }, format="json")
         self.assertEqual(principal_payment.status_code, 201, principal_payment.data)
         interest_payment = self.client.post(payment_url, {
-            "payment_date": ad_to_bs(nepal_today()),
+            "payment_date": ad_to_bs(payment_date),
             "type": PledgePayment.Type.INTEREST,
             "amount": "5000.00",
         }, format="json")
         self.assertEqual(interest_payment.status_code, 201, interest_payment.data)
 
         pledge = Pledge.objects.get(pk=created.data["id"])
-        summary = pledge_financial_summary(pledge, nepal_today(), include_breakdown=False)["summary"]
+        summary = pledge_financial_summary(pledge, payment_date, include_breakdown=False)["summary"]
         self.assertEqual(summary["principal"], {
             "total": "100000.00", "paid": "50000.00", "due": "50000.00",
         })
         self.assertEqual(summary["interest"], {
-            "total": "7900.29", "paid": "5000.00", "due": "2900.29",
+            "total": "7833.62", "paid": "5000.00", "due": "2833.62",
         })
         self.assertEqual(summary["total"], {
-            "total": "107900.29", "paid": "55000.00", "due": "52900.29",
+            "total": "107833.62", "paid": "55000.00", "due": "52833.62",
         })
 
     def test_business_source_summary_aggregates_multiple_pledges(self):
-        start = nepal_today() - timedelta(days=150)
+        start = bs_to_ad("2083-01-01")
+        day_121 = bs_date_after_360_days(start, 121)
+        day_151 = bs_date_after_360_days(start, 151)
         first = self.create_pledge(pledge_date=ad_to_bs(start))
-        second = self.create_pledge()
+        second = self.create_pledge(pledge_date=ad_to_bs(day_151))
         self.assertEqual(first.status_code, 201, first.data)
         self.assertEqual(second.status_code, 201, second.data)
         pledge = Pledge.objects.get(pk=first.data["id"])
         PledgePayment.objects.create(
             pledge=pledge,
-            payment_date=start + timedelta(days=120),
+            payment_date=day_121,
             type=PledgePayment.Type.PRINCIPAL,
             amount="50000.00",
             recorded_by=self.cashier,
         )
 
-        response = self.client.get(reverse("business-source-pledge-summary", args=[self.source.pk]))
+        with patch("pledges.views.nepal_today", return_value=day_151):
+            response = self.client.get(reverse("business-source-pledge-summary", args=[self.source.pk]))
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["summary"]["principal"], {
             "total": "200000.00", "paid": "50000.00", "due": "150000.00",
@@ -662,6 +977,73 @@ class PledgeApiTests(APITestCase):
         self.assertEqual(response.data["summary"]["total"], {
             "total": "211100.20", "paid": "50000.00", "due": "161100.20",
         })
+
+    def test_month_end_extra_is_consistent_across_due_summary_history_and_source_totals(self):
+        pledge_date = bs_to_ad("2083-01-01")
+        month_end = bs_to_ad("2083-03-31")
+        created = self.create_pledge(pledge_date=ad_to_bs(pledge_date))
+        self.assertEqual(created.status_code, 201, created.data)
+        pledge_id = created.data["id"]
+        summary_url = reverse("pledge-financial-summary", args=[pledge_id])
+        due_url = reverse("pledge-payment-due", args=[pledge_id])
+        payment_url = reverse("pledge-payment-list", args=[pledge_id])
+
+        due = self.client.get(due_url, {"as_of": ad_to_bs(month_end)})
+        self.assertEqual(due.status_code, 200, due.data)
+        self.assertEqual(due.data["interest_due"], "6000.20")
+        self.assertEqual(due.data["month_end_extra"], {
+            "days": 1, "amount": "66.67", "payable_today": "6000.20",
+        })
+
+        with patch("pledges.views.nepal_today", return_value=month_end):
+            accrued_summary = self.client.get(summary_url)
+        self.assertEqual(accrued_summary.data["summary"]["interest"], {
+            "total": "5933.53", "paid": "0.00", "due": "5933.53",
+        })
+        self.assertEqual(accrued_summary.data["month_end_extra"], {
+            "days": 1, "amount": "66.67", "payable_today": "6000.20",
+        })
+
+        payment = self.client.post(payment_url, {
+            "payment_date": ad_to_bs(month_end),
+            "type": PledgePayment.Type.INTEREST,
+            "amount": "6000.20",
+        }, format="json")
+        self.assertEqual(payment.status_code, 201, payment.data)
+        self.assertEqual(payment.data["due_before"], "6000.20")
+        self.assertEqual(payment.data["remaining_after"], "0.00")
+
+        with patch("pledges.views.nepal_today", return_value=month_end):
+            charged_summary = self.client.get(summary_url)
+        self.assertEqual(charged_summary.data["summary"]["interest"], {
+            "total": "6000.20", "paid": "6000.20", "due": "0.00",
+        })
+        self.assertNotIn("month_end_extra", charged_summary.data)
+        self.assertEqual(
+            [
+                (row["kind"], row["start_date"], row["days"], row["interest"])
+                for row in charged_summary.data["interest_breakdown"]
+                if row["kind"] == "MONTH_END_EXTRA"
+            ],
+            [("MONTH_END_EXTRA", "2083-03-31", 1, "66.67")],
+        )
+
+        source_summary = business_source_financial_summary(self.source.pk, month_end)
+        self.assertEqual(source_summary["summary"], charged_summary.data["summary"])
+
+        self.client.force_authenticate(self.staff)
+        edit = self.client.patch(
+            reverse("pledge-payment-detail", args=[payment.data["id"]]),
+            {
+                "payment_date": "2083-03-30",
+                "amount": "6000.20",
+                "reason": "Move before month end",
+            },
+            format="json",
+        )
+        self.assertEqual(edit.status_code, 400, edit.data)
+        stored_payment = PledgePayment.objects.get(pk=payment.data["id"])
+        self.assertEqual(stored_payment.payment_date, month_end)
 
     def test_payment_above_due_and_future_date_are_rejected(self):
         start = nepal_today() - timedelta(days=2)

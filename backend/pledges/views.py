@@ -23,6 +23,7 @@ from .serializers import (
     PledgeStatusSerializer,
     business_source_financial_summary,
     payment_due_amount,
+    payment_due_details,
     payment_history_representation,
     pledge_financial_summary,
     validate_payment_history,
@@ -168,20 +169,24 @@ class PledgePaymentDueView(APIView):
             and payment.type == PledgePayment.Type.PRINCIPAL
             and payment.payment_date == as_of
         ]
-        return Response({
+        interest_due = payment_due_details(
+            pledge,
+            PledgePayment.Type.INTEREST,
+            as_of,
+            prior_payments,
+            edit_logs,
+            same_day_principal_payments=same_day_principal,
+        )
+        result = {
             "as_of": ad_to_bs(as_of),
             "principal_due": str(payment_due_amount(
                 pledge, PledgePayment.Type.PRINCIPAL, as_of, prior_payments, edit_logs,
             )),
-            "interest_due": str(payment_due_amount(
-                pledge,
-                PledgePayment.Type.INTEREST,
-                as_of,
-                prior_payments,
-                edit_logs,
-                same_day_principal_payments=same_day_principal,
-            )),
-        })
+            "interest_due": str(interest_due["amount"]),
+        }
+        if interest_due["month_end_extra"] is not None:
+            result["month_end_extra"] = interest_due["month_end_extra"]
+        return Response(result)
 
 
 class PledgeFinancialSummaryView(APIView):
@@ -316,4 +321,5 @@ class PledgeStatusView(APIView):
             reason,
             effective_date=nepal_today(),
         )
+        pledge.refresh_from_db()
         return Response(PledgeSerializer(pledge, context={"request": request}).data)
