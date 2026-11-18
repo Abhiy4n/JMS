@@ -203,7 +203,10 @@ class BusinessSourceListCreateView(generics.ListCreateAPIView):
         return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
-        queryset = BusinessSource.objects.annotate(customer_count=Count("customers")).prefetch_related("term_edit_logs")
+        queryset = BusinessSource.objects.annotate(
+            customer_count=Count("customers", distinct=True),
+            has_pledges=Count("pledges", distinct=True),
+        ).prefetch_related("term_edit_logs")
         search = self.request.query_params.get("search", "").strip()
         if search:
             queryset = queryset.filter(name__icontains=search)
@@ -243,7 +246,10 @@ class BusinessSourceSummaryView(APIView):
 
 
 class BusinessSourceDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = BusinessSource.objects.annotate(customer_count=Count("customers")).prefetch_related("term_edit_logs")
+    queryset = BusinessSource.objects.annotate(
+        customer_count=Count("customers", distinct=True),
+        has_pledges=Count("pledges", distinct=True),
+    ).prefetch_related("term_edit_logs")
     serializer_class = BusinessSourceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -268,10 +274,12 @@ class BusinessSourceDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class IsBusinessSourceManager(permissions.BasePermission):
-    message = "Only superusers can create, edit, deactivate, or delete Business Sources."
+    message = "Only admins can create, edit, deactivate, or delete Business Sources."
 
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
+        from .models import can_manage_business_sources
+
+        return can_manage_business_sources(request.user)
 
 
 class CustomerListCreateView(generics.ListCreateAPIView):

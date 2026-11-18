@@ -202,7 +202,7 @@ export default function LoginActivityPage() {
           <div>
             <strong>New device login detected</strong>
             <p>
-              {newDeviceEvent.device_name} · {newDeviceEvent.location || "Unknown location"} · {formatDate(newDeviceEvent.occurred_at)}
+              {newDeviceEvent.device_name} · {newDeviceEvent.location || "Location unavailable"} · {formatDate(newDeviceEvent.occurred_at)}
             </p>
           </div>
         </section>
@@ -252,7 +252,7 @@ export default function LoginActivityPage() {
                     </div>
                     <p className={styles.deviceSubtitle}>{session.browser} · {session.operating_system} · {session.device_type || "Device"}</p>
                     <div className={styles.metadata}>
-                      <span><MapPin aria-hidden="true" />{session.location || "Unknown location"}</span>
+                      <span><MapPin aria-hidden="true" />{session.location || "Location unavailable"}</span>
                       <span><Globe2 aria-hidden="true" />{session.ip_address || "IP unavailable"}</span>
                       <span><Clock3 aria-hidden="true" />Last active {formatRelative(session.last_seen_at)}</span>
                     </div>
@@ -303,7 +303,7 @@ export default function LoginActivityPage() {
                       {event.is_new_device && <span className={styles.newBadge}>New device</span>}
                     </div>
                     <p>{event.device_name} · {event.browser} on {event.operating_system}</p>
-                    <span className={styles.eventLocation}><MapPin aria-hidden="true" />{event.location || "Unknown location"}{event.ip_address ? ` · ${event.ip_address}` : ""}</span>
+                    <span className={styles.eventLocation}><MapPin aria-hidden="true" />{event.location || "Location unavailable"}{event.ip_address ? ` · ${event.ip_address}` : ""}</span>
                   </div>
                   <time className={styles.eventTime} dateTime={event.occurred_at} title={formatDate(event.occurred_at)}>{formatRelative(event.occurred_at)}</time>
                 </li>

@@ -7,12 +7,14 @@ from django.db import connection, IntegrityError, transaction
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
-from .models import BhakaPatra, BusinessSource, Customer, User
+from .models import BhakaPatra, BusinessSource, Customer, Role, User
 
 
 class CustomerFolioTests(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(email="folio@example.com", name="Folio", password="test-password-123")
+        self.user = User.objects.create_user(
+            email="folio@example.com", name="Folio", password="test-password-123", role=Role.MEMBER,
+        )
         self.client.force_authenticate(self.user)
         self.admin = User.objects.create_superuser(email="folio-admin@example.com", name="Folio admin", password="test-pass")
 
@@ -79,7 +81,7 @@ class CustomerFolioTests(APITestCase):
         independent_edit = self.client.patch(reverse("customer-detail", args=[customer.pk]), {"name": "Inconsistent"}, format="json")
         self.assertEqual(independent_edit.status_code, 400)
 
-    def test_only_superusers_can_create_edit_deactivate_or_delete_business_sources(self):
+    def test_only_admins_can_create_edit_deactivate_or_delete_business_sources(self):
         source = self.source()
         detail = reverse("business-source-detail", args=[source.pk])
 

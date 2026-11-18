@@ -137,11 +137,19 @@ function formatDrfError(data: unknown, prefix = ""): string {
   if (Array.isArray(data)) return data.map((item) => formatDrfError(item, prefix)).filter(Boolean).join(" ");
   if (!data || typeof data !== "object") return "";
   const record = data as Record<string, unknown>;
-  if (typeof record.detail === "string") return record.detail;
-  return Object.entries(record)
-    .map(([key, value]) => formatDrfError(value, key === "non_field_errors" ? prefix : [prefix, key].filter(Boolean).join(".")))
-    .filter(Boolean)
-    .join(" ");
+  const parts: string[] = [];
+  if (typeof record.detail === "string" && record.detail.trim()) {
+    parts.push(record.detail.trim());
+  }
+  for (const [key, value] of Object.entries(record)) {
+    if (key === "detail") continue;
+    const formatted = formatDrfError(
+      value,
+      key === "non_field_errors" ? prefix : [prefix, key].filter(Boolean).join("."),
+    );
+    if (formatted) parts.push(formatted);
+  }
+  return parts.join(" ");
 }
 
 function getRetryAfterMs(response: Response) {

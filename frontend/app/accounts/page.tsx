@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function AccountsPage() {
-  redirect("/accounts/bills");
+  redirect("/bills");
 }

@@ -24,7 +24,6 @@ import {
   Sparkles,
   Sun,
   Trash2,
-  WalletCards,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -50,6 +49,7 @@ const PROFILE_PICTURE_MAX_BYTES = 5 * 1024 * 1024;
 
 const primaryNavigation = [
   { label: "Business sources", href: "/business-sources", icon: Boxes },
+  { label: "Bills", href: "/bills", icon: FileText },
 ];
 
 const workspaceNavigation = [
@@ -86,9 +86,8 @@ function isActivePath(pathname: string, href: string, label: string) {
 }
 
 function getPageLabel(pathname: string) {
-  if (pathname.startsWith("/accounts")) return "Accounts · Bills";
   if (pathname.startsWith("/customers")) return "Customers";
-  if (pathname.startsWith("/bills")) return "Bills & invoices";
+  if (pathname.startsWith("/bills")) return "Bills";
   if (pathname.startsWith("/business-sources")) return "Business sources";
   if (pathname === "/pledges/report") return "Customer-wise Report";
   if (pathname.startsWith("/pledges")) return "Pledge Records";
@@ -106,7 +105,6 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
   const { clearAuthentication } = useAuth();
   const [search, setSearch] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [accountsOpen, setAccountsOpen] = useState(() => pathname.startsWith("/accounts"));
   const [profileOpen, setProfileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -317,31 +315,6 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
               <Gem aria-hidden="true" />
               <span>Pledge Records</span>
             </Link>
-            <div className={styles.navItemGroup}>
-              <button
-                className={`${styles.navItem} ${pathname.startsWith("/accounts") ? styles.navItemActive : ""}`}
-                type="button"
-                title={navTitle("Accounts")}
-                aria-expanded={accountsOpen}
-                aria-controls="accounts-submenu"
-                onClick={() => setAccountsOpen((open) => !open)}
-              >
-                <WalletCards aria-hidden="true" />
-                <span>Accounts</span>
-                <ChevronDown className={`${styles.navChevron} ${accountsOpen ? styles.navChevronOpen : ""}`} aria-hidden="true" />
-              </button>
-              <div className={styles.navSubmenu} id="accounts-submenu" aria-label="Accounts" hidden={!accountsOpen}>
-                <Link
-                  className={`${styles.navItem} ${styles.navSubItem} ${pathname === "/accounts/bills" ? styles.navItemActive : ""}`}
-                  href="/accounts/bills"
-                  aria-current={pathname === "/accounts/bills" ? "page" : undefined}
-                  title={navTitle("Bills")}
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <FileText aria-hidden="true" /><span>Bills</span>
-                </Link>
-              </div>
-            </div>
           </div>
 
           <div className={styles.navGroup}>

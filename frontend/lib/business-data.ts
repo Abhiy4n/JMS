@@ -102,7 +102,7 @@ export type BusinessSource = {
   interest_percentage: string | null; interest_amount: string | null; days: number | null;
   monthly_interest_amount: string | null; interest_credit_basis: string | null;
   channel_type: ChannelType; status: SourceStatus; description: string;
-  customer_count: number; created_at: string; updated_at: string;
+  customer_count: number; has_pledges?: boolean; created_at: string; updated_at: string;
 };
 export type NewBusinessSource = {
   name: string; source_type?: CustomerType; phone?: string; pan_vat_number?: string;

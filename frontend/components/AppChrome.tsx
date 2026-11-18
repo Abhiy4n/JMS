@@ -10,7 +10,6 @@ const APP_PATHS = [
   "/dashboard",
   "/customers",
   "/bills",
-  "/accounts",
   "/business-sources",
   "/api-docs",
   "/settings",

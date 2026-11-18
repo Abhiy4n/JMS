@@ -1,3 +1,5 @@
+import secrets
+import string
 import uuid
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -13,14 +15,29 @@ from accounts.models import BusinessSource, Customer
 
 
 NEPAL_TIME_ZONE = ZoneInfo("Asia/Kathmandu")
+PLEDGE_NUMBER_LENGTH = 5
+PLEDGE_NUMBER_ALPHABET = string.ascii_uppercase + string.digits
+PLEDGE_NUMBER_MAX_ATTEMPTS = 64
 
 
 def nepal_today():
     return timezone.now().astimezone(NEPAL_TIME_ZONE).date()
 
 
+def _random_pledge_number():
+    return "".join(secrets.choice(PLEDGE_NUMBER_ALPHABET) for _ in range(PLEDGE_NUMBER_LENGTH))
+
+
 def generate_pledge_number():
-    return f"PLG-{uuid.uuid4().hex.upper()}"
+    """Allocate a unique 5-character pledge code (A-Z / 0-9), without a PLG- prefix."""
+    from django.apps import apps
+
+    PledgeModel = apps.get_model("pledges", "Pledge")
+    for _ in range(PLEDGE_NUMBER_MAX_ATTEMPTS):
+        code = _random_pledge_number()
+        if not PledgeModel.objects.filter(pledge_number=code).exists():
+            return code
+    raise RuntimeError("Could not allocate a unique 5-character pledge number.")
 
 
 class Pledge(models.Model):
@@ -29,7 +46,7 @@ class Pledge(models.Model):
         CLOSED = "CLOSED", "Closed"
         FORFEITED = "FORFEITED", "Forfeited"
 
-    pledge_number = models.CharField(max_length=36, unique=True, default=generate_pledge_number, editable=False)
+    pledge_number = models.CharField(max_length=5, unique=True, default=generate_pledge_number, editable=False)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="pledges")
     business_source = models.ForeignKey(BusinessSource, on_delete=models.PROTECT, related_name="pledges")
     pledge_date = models.DateField(default=nepal_today)

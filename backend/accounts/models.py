@@ -10,7 +10,17 @@ from django.utils import timezone
 
 class Role(models.TextChoices):
     ADMIN = "Admin", "Admin"
-    # Add Member, Editor later — CharField needs no schema change for new values.
+    MEMBER = "Member", "Member"
+    # Add Editor later — CharField needs no schema change for new values.
+
+
+def can_manage_business_sources(user):
+    """Admins (role or Django superuser) may create/edit/deactivate/delete sources."""
+    return bool(
+        user
+        and user.is_authenticated
+        and (user.is_superuser or getattr(user, "role", None) == Role.ADMIN)
+    )
 
 
 BUSINESS_SOURCE_TERM_PRESETS = {

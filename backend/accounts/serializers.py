@@ -152,6 +152,7 @@ class LoginSerializer(serializers.Serializer):
 class UserSessionSerializer(serializers.ModelSerializer):
     current = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
 
     class Meta:
         model = UserSession
@@ -183,8 +184,14 @@ class UserSessionSerializer(serializers.ModelSerializer):
             return "expired"
         return "active"
 
+    def get_location(self, obj):
+        from .request_metadata import resolve_location
+        return resolve_location(obj.ip_address, obj.location)
+
 
 class LoginEventSerializer(serializers.ModelSerializer):
+    location = serializers.SerializerMethodField()
+
     class Meta:
         model = LoginEvent
         fields = (
@@ -200,6 +207,10 @@ class LoginEventSerializer(serializers.ModelSerializer):
             "occurred_at",
         )
         read_only_fields = fields
+
+    def get_location(self, obj):
+        from .request_metadata import resolve_location
+        return resolve_location(obj.ip_address, obj.location)
 
 
 class NewBusinessSourceCategorySerializer(serializers.Serializer):
@@ -388,6 +399,7 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
         message="A business source with this name already exists.",
     )])
     customer_count = serializers.SerializerMethodField()
+    has_pledges = serializers.SerializerMethodField()
     term_edit_log = BusinessSourceTermEditLogSerializer(source="term_edit_logs", many=True, read_only=True)
     first_customer = InitialCustomerSerializer(write_only=True, required=False)
     reason = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=500)
@@ -433,18 +445,34 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
             "status",
             "description",
             "customer_count",
+            "has_pledges",
             "term_edit_log",
             "first_customer",
             "reason",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "customer_count", "created_at", "updated_at")
+        read_only_fields = ("id", "customer_count", "has_pledges", "created_at", "updated_at")
 
     def get_customer_count(self, obj):
         if hasattr(obj, "customer_count"):
             return obj.customer_count
         return obj.customers.count()
+
+    def get_has_pledges(self, obj):
+        if hasattr(obj, "has_pledges"):
+            return bool(obj.has_pledges)
+        return obj.pledges.exists()
+
+    @staticmethod
+    def _value_changed(current, incoming):
+        if isinstance(current, Decimal) or isinstance(incoming, Decimal):
+            if current is None or incoming is None:
+                return current != incoming
+            return Decimal(current) != Decimal(incoming)
+        if isinstance(current, str) or isinstance(incoming, str):
+            return (current or "").strip() != (str(incoming) if incoming is not None else "").strip()
+        return current != incoming
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -469,12 +497,49 @@ class BusinessSourceSerializer(serializers.ModelSerializer):
         kind = current("source_type", BusinessSource.Type.INDIVIDUAL)
         errors = {}
         request = self.context.get("request")
-        if self.instance is None and request is not None and not request.user.is_superuser:
-            raise PermissionDenied("Only superusers can create Business Sources.")
+        from .models import can_manage_business_sources
+
+        if self.instance is None and request is not None and not can_manage_business_sources(request.user):
+            raise PermissionDenied("Only admins can create Business Sources.")
         legacy_create = self.context.get("legacy_customer_source") or (
             self.instance is None and "first_customer" in attrs
         )
         source_type_changed = self.instance is not None and kind != self.instance.source_type
+        has_pledges = bool(self.instance is not None and self.instance.pledges.exists())
+        if has_pledges:
+            locked_fields = (
+                "name",
+                "source_type",
+                "phone",
+                "pan_vat_number",
+                "market_segment",
+                "email",
+                "address",
+                "interest_type",
+                "interest_percentage",
+                "interest_amount",
+                "days",
+                "upfront_percent",
+                "upfront_days",
+                "daily_percent",
+                "daily_divisor",
+                "monthly_interest_amount",
+                "interest_credit_basis",
+                "channel_type",
+                "description",
+            )
+            changed = [
+                field
+                for field in locked_fields
+                if field in attrs and self._value_changed(getattr(self.instance, field, None), attrs[field])
+            ]
+            if changed:
+                raise serializers.ValidationError({
+                    "non_field_errors": (
+                        "This Business Source cannot be edited after pledges have been created for it. "
+                        "Deactivate it instead if it should no longer be used."
+                    ),
+                })
 
         address_is_missing = not current("address").strip()
         if address_is_missing and not legacy_create and (

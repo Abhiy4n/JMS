@@ -242,9 +242,13 @@ class BusinessSourceIdentityTests(APITestCase):
         for url in (reverse("business-source-list"), reverse("business-source-detail", args=[source.id])):
             self.assertEqual(self.client.get(url).status_code, 401)
 
-    def test_only_superusers_can_create_or_edit_sources(self):
+    def test_only_admins_can_create_or_edit_sources(self):
+        from .models import Role
+
         source = self.create_source().data
-        member = User.objects.create_user(email="member@example.com", name="Member", password="test-pass")
+        member = User.objects.create_user(
+            email="member@example.com", name="Member", password="test-pass", role=Role.MEMBER,
+        )
         member.is_staff = True
         member.save(update_fields=("is_staff",))
         self.client.force_authenticate(member)

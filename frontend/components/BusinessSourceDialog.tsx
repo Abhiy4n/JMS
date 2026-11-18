@@ -22,9 +22,11 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
   const [error, setError] = useState("");
   const panelRef = useRef<HTMLElement>(null);
   useDialog(panelRef, onClose, saving);
-  const requiresReason = Boolean(source && sourceType !== source.source_type);
+  const sourceLocked = Boolean(source?.has_pledges);
+  const requiresReason = Boolean(source && !sourceLocked && sourceType !== source.source_type);
 
   function changeSourceType(nextType: CustomerType) {
+    if (sourceLocked) return;
     setSourceType(nextType);
     setError("");
     if (nextType === "INDIVIDUAL") {
@@ -49,6 +51,10 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
+    if (sourceLocked) {
+      setError("This Business Source cannot be edited after pledges have been created for it.");
+      return;
+    }
     if (!name.trim()) { setError("Name is required."); return; }
     if (!address.trim()) { setError("Address is required."); return; }
     if (phone && !/^[0-9]{9,10}$/.test(phone)) { setError("Enter a phone number with 9 or 10 digits."); return; }
@@ -82,36 +88,40 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
 
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
     <section ref={panelRef} tabIndex={-1} className="modal-panel business-source-editor" role="dialog" aria-modal="true" aria-labelledby="source-dialog-title">
-      <div className="modal-heading"><h2 id="source-dialog-title">{source ? "Edit business source" : "Create Source"}</h2><button className="icon-button" type="button" disabled={saving} onClick={onClose} aria-label="Close">×</button></div>
+      <div className="modal-heading"><h2 id="source-dialog-title">{sourceLocked ? "View business source" : source ? "Edit business source" : "Create Source"}</h2><button className="icon-button" type="button" disabled={saving} onClick={onClose} aria-label="Close">×</button></div>
       <form className="form-stack business-source-form" onSubmit={submit}>
-        <label className="form-field business-source-full-field"><span>Name <b>*</b></span><input required maxLength={255} placeholder="Business source name" value={name} onChange={(event) => setName(event.target.value)} /></label>
-        <div className="form-field"><span id="source-type-label">Source type <b>*</b></span><Select aria-labelledby="source-type-label" value={sourceType} options={CUSTOMER_TYPES.map((kind) => ({ value: kind, label: kind === "DYNAMIC" ? "Dynamic" : CUSTOMER_TYPE_LABELS[kind] }))} onChange={changeSourceType} /></div>
+        {sourceLocked && <p className="notice notice-error business-source-full-field" role="status">This Business Source already has pledges, so its details are locked. Deactivate it instead if it should no longer be used.</p>}
+        <label className="form-field business-source-full-field"><span>Name <b>*</b></span><input required maxLength={255} placeholder="Business source name" value={name} disabled={sourceLocked || saving} onChange={(event) => setName(event.target.value)} /></label>
+        <div className="form-field"><span id="source-type-label">Source type <b>*</b></span><Select aria-labelledby="source-type-label" value={sourceType} disabled={sourceLocked} options={CUSTOMER_TYPES.map((kind) => ({ value: kind, label: kind === "DYNAMIC" ? "Dynamic" : CUSTOMER_TYPE_LABELS[kind] }))} onChange={changeSourceType} />{sourceLocked && <small>Source details cannot be changed because this Business Source already has pledges.</small>}</div>
         {requiresReason && <label className="form-field business-source-full-field"><span>Reason for changing source type <b>*</b></span><textarea required minLength={5} maxLength={500} placeholder="Explain why the source type is changing" value={reason} onChange={(event) => setReason(event.target.value)} rows={2} /><small>At least 5 characters are required because this changes the pledge terms.</small></label>}
-        <label className="form-field"><span>Phone Number {sourceType !== "COMPANY" && <b>*</b>}</span><input type="tel" required={sourceType !== "COMPANY"} inputMode="numeric" pattern="[0-9]{9,10}" minLength={9} maxLength={10} placeholder={sourceType === "COMPANY" ? "Optional phone number" : "9 or 10 digit number"} value={phone} onChange={(event) => { setPhone(event.target.value.replace(/[^0-9]/g, "").slice(0, 10)); setError(""); }} autoComplete="tel" title="Enter a phone number with 9 or 10 digits." aria-describedby="business-source-phone-help" /><small id="business-source-phone-help">Use 9 or 10 digits when provided.</small></label>
-        {sourceType !== "INDIVIDUAL" && <label className="form-field"><span>PAN/VAT Number {sourceType === "COMPANY" && <b>*</b>}</span><input required={sourceType === "COMPANY"} maxLength={32} value={panVat} onChange={(event) => setPanVat(event.target.value)} /></label>}
+        <label className="form-field"><span>Phone Number {sourceType !== "COMPANY" && <b>*</b>}</span><input type="tel" required={sourceType !== "COMPANY"} inputMode="numeric" pattern="[0-9]{9,10}" minLength={9} maxLength={10} placeholder={sourceType === "COMPANY" ? "Optional phone number" : "9 or 10 digit number"} value={phone} disabled={sourceLocked || saving} onChange={(event) => { setPhone(event.target.value.replace(/[^0-9]/g, "").slice(0, 10)); setError(""); }} autoComplete="tel" title="Enter a phone number with 9 or 10 digits." aria-describedby="business-source-phone-help" /><small id="business-source-phone-help">Use 9 or 10 digits when provided.</small></label>
+        {sourceType !== "INDIVIDUAL" && <label className="form-field"><span>PAN/VAT Number {sourceType === "COMPANY" && <b>*</b>}</span><input required={sourceType === "COMPANY"} maxLength={32} value={panVat} disabled={sourceLocked || saving} onChange={(event) => setPanVat(event.target.value)} /></label>}
         {sourceType === "INDIVIDUAL" && <>
-          <label className="form-field"><span>Interest Rate (%) <b>*</b></span><input required type="number" min="0.0001" step="0.0001" placeholder="Enter interest rate (%)" value={interestPercentage} onChange={(event) => setInterestPercentage(event.target.value)} /></label>
+          <label className="form-field"><span>Interest Rate (%) <b>*</b></span><input required type="number" min="0.0001" step="0.0001" placeholder="Enter interest rate (%)" value={interestPercentage} disabled={sourceLocked || saving} onChange={(event) => setInterestPercentage(event.target.value)} /></label>
           <p className="form-help business-source-full-field">Interest is charged on the principal every 30 days. The first period is charged immediately.</p>
         </>}
         {sourceType === "COMPANY" && <>
-          <label className="form-field"><span>Interest Rate (%) <b>*</b></span><input required type="number" min="0.0001" step="0.0001" placeholder="Enter interest rate (%)" value={interestPercentage} onChange={(event) => setInterestPercentage(event.target.value)} /></label>
-          <label className="form-field"><span>Days <b>*</b></span><input required readOnly type="number" value={days} /></label>
+          <label className="form-field"><span>Interest Rate (%) <b>*</b></span><input required type="number" min="0.0001" step="0.0001" placeholder="Enter interest rate (%)" value={interestPercentage} disabled={sourceLocked || saving} onChange={(event) => setInterestPercentage(event.target.value)} /></label>
+          <label className="form-field"><span>Days <b>*</b></span><input required readOnly type="number" value={days} disabled={sourceLocked || saving} /></label>
           <p className="form-help business-source-full-field">Interest is charged on the principal every 15 days. The first period is charged immediately.</p>
         </>}
         {sourceType === "DYNAMIC" && <>
-          <div className="form-field"><span id="source-interest-type-label">Interest Type <b>*</b></span><Select aria-labelledby="source-interest-type-label" value={interestType} options={[{ value: "", label: "Select an interest type" }, ...BUSINESS_SOURCE_INTEREST_TYPES.map((type) => ({ value: type, label: type === "PERCENTAGE" ? "Percentage" : "Fixed Amount" }))]} onChange={setInterestType} /></div>
-          {interestType === "PERCENTAGE" && <label className="form-field"><span>Interest % <b>*</b></span><input required type="number" min="0.0001" step="0.0001" placeholder="Enter interest rate (%)" value={interestPercentage} onChange={(event) => setInterestPercentage(event.target.value)} /></label>}
-          {interestType === "FIXED_AMOUNT" && <label className="form-field"><span>Interest Amount <b>*</b></span><input required type="number" min="0.01" step="0.01" placeholder="Enter interest amount" value={interestAmount} onChange={(event) => setInterestAmount(event.target.value)} /></label>}
-          <label className="form-field"><span>Days <b>*</b></span><input required type="number" min="1" step="1" placeholder="Enter interest period in days" value={days} onChange={(event) => setDays(event.target.value)} /></label>
+          <div className="form-field"><span id="source-interest-type-label">Interest Type <b>*</b></span><Select aria-labelledby="source-interest-type-label" value={interestType} disabled={sourceLocked} options={[{ value: "", label: "Select an interest type" }, ...BUSINESS_SOURCE_INTEREST_TYPES.map((type) => ({ value: type, label: type === "PERCENTAGE" ? "Percentage" : "Fixed Amount" }))]} onChange={setInterestType} /></div>
+          {interestType === "PERCENTAGE" && <label className="form-field"><span>Interest % <b>*</b></span><input required type="number" min="0.0001" step="0.0001" placeholder="Enter interest rate (%)" value={interestPercentage} disabled={sourceLocked || saving} onChange={(event) => setInterestPercentage(event.target.value)} /></label>}
+          {interestType === "FIXED_AMOUNT" && <label className="form-field"><span>Interest Amount <b>*</b></span><input required type="number" min="0.01" step="0.01" placeholder="Enter interest amount" value={interestAmount} disabled={sourceLocked || saving} onChange={(event) => setInterestAmount(event.target.value)} /></label>}
+          <label className="form-field"><span>Days <b>*</b></span><input required type="number" min="1" step="1" placeholder="Enter interest period in days" value={days} disabled={sourceLocked || saving} onChange={(event) => setDays(event.target.value)} /></label>
           <p className="form-help business-source-full-field">Configure a custom interest rate or amount and period for this agreement.</p>
         </>}
-        <label className="form-field business-source-full-field"><span>Email (optional)</span><input type="email" placeholder="name@example.com" value={email} onChange={(event) => {
+        <label className="form-field business-source-full-field"><span>Email (optional)</span><input type="email" placeholder="name@example.com" value={email} disabled={sourceLocked || saving} onChange={(event) => {
           setEmail(event.target.value);
           event.currentTarget.setCustomValidity(isValidContactEmail(event.target.value) ? "" : "Use a valid email address with a recognized domain such as .com or .np.");
         }} autoComplete="email" /></label>
-        <label className="form-field business-source-full-field"><span>Address <b>*</b></span><textarea required placeholder="Enter address" value={address} onChange={(event) => setAddress(event.target.value)} rows={2} /></label>
+        <label className="form-field business-source-full-field"><span>Address <b>*</b></span><textarea required placeholder="Enter address" value={address} disabled={sourceLocked || saving} onChange={(event) => setAddress(event.target.value)} rows={2} /></label>
         {error && <p className="notice notice-error business-source-full-field" role="alert">{error}</p>}
-        <div className="modal-actions"><button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>Cancel</button><button className="button button-primary" type="submit" disabled={saving}>{saving ? "Saving..." : source ? "Save changes" : "Create Source"}</button></div>
+        <div className="modal-actions">
+          <button className="button button-secondary" type="button" disabled={saving} onClick={onClose}>{sourceLocked ? "Close" : "Cancel"}</button>
+          {!sourceLocked && <button className="button button-primary" type="submit" disabled={saving}>{saving ? "Saving..." : source ? "Save changes" : "Create Source"}</button>}
+        </div>
       </form>
     </section>
   </div>;

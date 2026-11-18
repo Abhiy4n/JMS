@@ -145,7 +145,7 @@ export default function BusinessSourcesPage() {
       <tbody>{loading ? <tr><td colSpan={7} className="table-message">Loading business sources...</td></tr> : error ? <tr><td colSpan={7} className="table-message"><button className="button button-secondary" onClick={refresh}>Retry loading business sources</button></td></tr> : sources.length === 0 ? <tr><td colSpan={7} className="table-message">{hasFilters ? "No matching business sources" : "No business sources yet. Create your first source above."}</td></tr> : sources.map((source, index) => <tr key={source.id}>
         <td>{index + 1}</td><td className="business-source-name-cell"><Link className="source-name-link business-source-name-button" href={`/business-sources/${source.id}`} aria-label={`Open details for ${source.name}`}>{source.name}</Link></td><td>{BUSINESS_SOURCE_TYPE_LABELS[source.source_type]}</td><td>{source.phone || "—"}</td><td>{source.address || "—"}</td><td>{source.created_at ? new Date(source.created_at).toLocaleDateString() : "—"}</td>
         <td className="business-source-action-cell"><ActionBtn label={`Actions for ${source.name}`} disabled={deletingId !== null} actions={[
-          { label: "Edit", icon: <Edit3 aria-hidden="true" />, onSelect: () => setEditing(source) },
+          { label: source.has_pledges ? "View" : "Edit", icon: <Edit3 aria-hidden="true" />, onSelect: () => setEditing(source) },
           { label: deletingId === source.id ? "Deleting..." : "Delete", icon: <Trash2 aria-hidden="true" />, tone: "danger", onSelect: () => removeSource(source) },
         ]} /></td>
       </tr>)}</tbody>
@@ -175,7 +175,7 @@ export default function BusinessSourcesPage() {
               </div>
             </div>
             <ActionBtn label={`Actions for ${source.name}`} disabled={deletingId !== null} actions={[
-              { label: "Edit", icon: <Edit3 aria-hidden="true" />, onSelect: () => setEditing(source) },
+              { label: source.has_pledges ? "View" : "Edit", icon: <Edit3 aria-hidden="true" />, onSelect: () => setEditing(source) },
               { label: deletingId === source.id ? "Deleting..." : "Delete", icon: <Trash2 aria-hidden="true" />, tone: "danger", onSelect: () => removeSource(source) },
             ]} />
           </div>

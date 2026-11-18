@@ -1,8 +1,11 @@
 import ipaddress
+import json
 import re
 from functools import lru_cache
 from pathlib import Path
+from urllib.error import URLError
 from urllib.parse import unquote
+from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.utils.crypto import salted_hmac
@@ -121,6 +124,33 @@ def _geoip_reader(database_path):
         return None
 
 
+def _private_ip_location(address):
+    if address.is_loopback:
+        return "This computer"
+    if address.is_private or address.is_link_local or address.is_reserved:
+        return "Local network"
+    return ""
+
+
+@lru_cache(maxsize=256)
+def _http_ip_location(ip_value):
+    """Fallback city/country lookup when a local GeoIP database is unavailable."""
+
+    try:
+        request = Request(
+            f"https://ipapi.co/{ip_value}/json/",
+            headers={"User-Agent": "JMS-auth-location/1.0", "Accept": "application/json"},
+        )
+        with urlopen(request, timeout=1.5) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    except (URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, dict) or payload.get("error"):
+        return ""
+    parts = [payload.get("city"), payload.get("region"), payload.get("country_name") or payload.get("country")]
+    return ", ".join(part for part in parts if isinstance(part, str) and part.strip())[:255]
+
+
 def get_ip_location(ip_value):
     if not ip_value:
         return ""
@@ -129,20 +159,30 @@ def get_ip_location(ip_value):
     except ValueError:
         return ""
     if not address.is_global:
-        return ""
+        return _private_ip_location(address)
 
     database_path = getattr(settings, "AUTH_GEOIP2_DATABASE", "")
-    if not database_path or not Path(database_path).is_file():
-        return ""
-    reader = _geoip_reader(str(database_path))
-    if reader is None:
-        return ""
-    try:
-        result = reader.city(str(address))
-    except Exception:  # GeoIP lookup errors must never prevent authentication.
-        return ""
-    parts = [result.city.name, result.country.name]
-    return ", ".join(part for part in parts if part)[:255]
+    if database_path and Path(database_path).is_file():
+        reader = _geoip_reader(str(database_path))
+        if reader is not None:
+            try:
+                result = reader.city(str(address))
+                parts = [result.city.name, result.country.name]
+                resolved = ", ".join(part for part in parts if part)[:255]
+                if resolved:
+                    return resolved
+            except Exception:  # GeoIP lookup errors must never prevent authentication.
+                pass
+
+    return _http_ip_location(str(address))
+
+
+def resolve_location(ip_value, stored_location=""):
+    """Prefer a stored location, otherwise derive one from the IP."""
+
+    if (stored_location or "").strip():
+        return stored_location.strip()[:255]
+    return get_ip_location(ip_value)
 
 
 def _clean_location_part(value):
