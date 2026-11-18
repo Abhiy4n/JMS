@@ -45,6 +45,13 @@ export type PledgePaymentDue = {
   as_of: string;
   principal_due: string;
   interest_due: string;
+  month_end_extra?: PledgeMonthEndExtra;
+};
+
+export type PledgeMonthEndExtra = {
+  days: number;
+  amount: string;
+  payable_today: string;
 };
 
 export type PledgeCalculation = {
@@ -57,6 +64,13 @@ export type PledgeCalculation = {
   unpaid_interest: string;
   outstanding_principal: string;
   total_outstanding: string;
+};
+
+export type PledgeAge = {
+  years: number;
+  months: number;
+  days: number;
+  text: string;
 };
 
 export type PledgeFinancialRow = {
@@ -72,7 +86,7 @@ export type PledgeFinancialRows = {
 };
 
 export type PledgeInterestPeriod = {
-  kind: "UPFRONT" | "DAILY" | "PAUSED" | "PRINCIPAL_PAYMENT";
+  kind: "UPFRONT" | "DAILY" | "PAUSED" | "PRINCIPAL_PAYMENT" | "MONTH_END_EXTRA";
   start_date: string;
   end_date: string;
   days: number;
@@ -87,6 +101,7 @@ export type PledgeFinancialSummary = {
   as_of: string;
   summary: PledgeFinancialRows;
   interest_breakdown: PledgeInterestPeriod[];
+  month_end_extra?: PledgeMonthEndExtra;
 };
 
 export type BusinessSourcePledgeSummary = {
@@ -113,6 +128,7 @@ export type Pledge = {
   daily_divisor: number;
   status: PledgeStatus;
   status_label: string;
+  age: PledgeAge;
   calculation: PledgeCalculation;
   payments: PledgePayment[];
   has_payments: boolean;

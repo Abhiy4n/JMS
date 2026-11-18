@@ -109,7 +109,7 @@ export type NewBusinessSource = {
   market_segment?: string; email?: string; address?: string;
   interest_type?: BusinessSourceInterestType | null;
   interest_percentage?: string | null; interest_amount?: string | null; days?: number | null;
-  channel_type?: ChannelType; description?: string; first_customer?: CustomerDetails;
+  channel_type?: ChannelType; description?: string; first_customer?: CustomerDetails; reason?: string;
 };
 export type CustomerTypeInfo = {
   code: CustomerType; name: string; customer_count: number; period_days: number;

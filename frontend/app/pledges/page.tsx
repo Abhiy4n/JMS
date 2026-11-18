@@ -240,6 +240,7 @@ function PledgeRecords() {
               <th scope="col">Customer</th>
               <th scope="col">Business Source</th>
               <th scope="col">Pledge Date</th>
+              <th scope="col">Duration</th>
               <th scope="col">Principal Amount</th>
               <th scope="col">Due Date</th>
               <th scope="col">Status</th>
@@ -249,14 +250,14 @@ function PledgeRecords() {
           </thead>
           <tbody>
             {dateRangeError ? (
-              <tr>              <td colSpan={9} className="table-message">Choose a valid pledge date range to view records.</td></tr>
+              <tr><td colSpan={10} className="table-message">Choose a valid pledge date range to view records.</td></tr>
             ) : loading ? (
-              <tr><td colSpan={9} className="table-message" role="status">Loading Pledge records...</td></tr>
+              <tr><td colSpan={10} className="table-message" role="status">Loading Pledge records...</td></tr>
             ) : error ? (
-              <tr><td colSpan={9} className="table-message">Pledge records could not be loaded.</td></tr>
+              <tr><td colSpan={10} className="table-message">Pledge records could not be loaded.</td></tr>
             ) : pledges.length === 0 ? (
               <tr>
-                <td colSpan={9} className="table-message empty-message">
+                <td colSpan={10} className="table-message empty-message">
                   <strong>{hasFilters ? "No matching Pledge records" : "No Pledge records yet"}</strong>
                   <span>
                     {hasFilters
@@ -271,6 +272,7 @@ function PledgeRecords() {
                 <td>{pledge.customer_name}</td>
                 <td>{pledge.business_source_name || "—"}</td>
                 <td>{formatDate(pledge.pledge_date)}</td>
+                <td>{pledge.age.text}</td>
                 <td className="pledge-amount-cell">{formatMoney(pledge.principal_amount)}</td>
                 <td>{formatDate(pledge.due_date)}</td>
                 <td>

@@ -13,6 +13,7 @@ import {
   updatePledgePayment,
   type Pledge,
   type PledgePayment,
+  type PledgePaymentDue,
   type PledgePaymentType,
 } from "@/lib/pledge-data";
 import { userFacingError } from "@/lib/user-facing-error";
@@ -84,7 +85,7 @@ type Props = {
 };
 
 type DueState =
-  | { key: string; data: { principal_due: string; interest_due: string } }
+  | { key: string; data: PledgePaymentDue }
   | { key: string; error: string };
 
 export default function PledgePaymentHistory({
@@ -343,6 +344,9 @@ export default function PledgePaymentHistory({
                       error={dateError || undefined}
                       onChange={(value) => { setDateSaveError(""); setSelectedDate(value); }}
                     />
+                  )}
+                  {activeType === "INTEREST" && due?.month_end_extra && (
+                    <small>{PLEDGE_LABELS.monthEndPaymentNote(due.month_end_extra.days)}</small>
                   )}
                   {defaultsLoading && <span>{PLEDGE_LABELS.paymentWhenLoading}</span>}
                 </div>

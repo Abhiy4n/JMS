@@ -22,22 +22,23 @@ Stored statuses are Active, Closed, and Forfeited. “Partially Paid” is a dis
 
 ## Interest and balances
 
-All calculation logic is in `backend/pledges/interest.py`. The function receives Gregorian dates and payment/status history; it does not query the database or convert calendars.
+All calculation logic is in `backend/pledges/interest.py`. Stored dates are Gregorian; the shared `bs_elapsed_days` helper in `backend/pledges/bs_dates.py` converts them to BS dates and applies the shop's 30/360 convention:
+`d360(date) = 360 * year + 30 * month + min(day, 30)`. The elapsed count is `d360(as_of) - d360(pledge date)`, so the pledge date is day 0. BS days 31 and 32 have the same day number as day 30, and the next month's day 1 is one day later.
 
-- Day 1 is the pledge date: `(as_of_date - pledge_date).days + 1`.
-- Upfront interest is `round_money(original principal * upfront percent / 100)`. It is charged once on creation and covers days 1 through `upfront_days`; an early principal payment does not reduce or refund it.
-- After that period, each active day adds `round_money(outstanding principal * daily percent / 100 / divisor)`. Daily interest is rounded to two decimals using `ROUND_HALF_UP` before multiplication by days.
-- A principal payment reduces the principal starting the next day. Earned interest is never recalculated, added to principal, or compounded. Unpaid interest remains outstanding.
-- Forfeiture pauses interest after the forfeiture date, inclusive through that date. Reopening resumes on its date. The pause interval is derived from status edit logs; there is no stored pause field. Upfront interest is never charged a second time.
-- Accrued interest is not stored. `Outstanding = outstanding principal + (interest earned - interest paid)`.
+- Upfront interest is `round_money(original principal * upfront percent / 100)`. It is charged once when the pledge is created and remains flat while elapsed days `n <= upfront_days`; an early principal payment does not reduce or refund it. The first daily charge is on elapsed day `upfront_days + 1`.
+- After the upfront period, each active 30/360 day adds `round_money(outstanding principal * daily percent / 100 / divisor)`. Daily interest is rounded to two decimals using `ROUND_HALF_UP` before multiplication by days.
+- A principal payment reduces principal immediately for that date. On a principal-payment day, ordinary daily interest is `daily(balance at start of day) + daily(balance at end of day)`. Previously earned interest is never recalculated, added to principal, or compounded.
+- An interest payment dated BS day 31 or 32 charges the largest extra-day count for that BS month (day minus 30); a later payment on day 32 after one on day 31 charges one additional day. Extra days are priced at the rounded daily amount on the payment date's outstanding balance, are not created by principal payments, and are included in accrued interest only once charged. They are never removed by a later payment date. No extra days are charged during the upfront period.
+- Forfeiture pauses only the interior 30/360 days between the forfeiture and reopen dates; interest remains active on both event dates. The pause interval is derived from status edit logs; there is no stored pause field.
+- Accrued interest is not stored. Summary totals include charged interest only. Interest due for a selected day 31/32 includes any uncharged extra days for that date. `Outstanding = outstanding principal + (interest earned - interest paid)`.
 
-The implementation tests the Individual example with principal 100000: day 1 and day 30 interest are 2000.00; day 31 is 2066.67; day 121 is 8066.97. A 50000 principal payment on day 121 makes the daily amount 33.33 from day 122; day 151 unpaid interest is 9066.87 and total outstanding is 59066.87. Company tests cover day 1/15 at 1000.00 and day 16 at 1066.67.
+The Individual example with principal 100000 has interest 2000.00 through elapsed day 30, then 2066.67 on day 31. With no payments, interest is 5933.53 on 2083-03-30, 2083-03-31, and 2083-03-32, and 6000.20 on 2083-04-01. On elapsed day 60, a 50000 principal payment produces 4033.43 interest that day under the both-balances rule; interest is 4066.76 on day 61 and 4100.09 on day 62. Company terms remain 1000.00 through elapsed day 15 and 1066.67 on day 16.
 
 ## Payments
 
 Each receipt records a date, an interest amount, and a principal amount; either portion may be zero, but not both. The cashier enters the split. Total amount is derived. Payment creation is atomic.
 
-- Interest paid cannot exceed unpaid interest as of that payment date.
+- Interest paid cannot exceed interest due as of that payment date, including uncharged month-end extra days when a payment is dated BS day 31 or 32.
 - Principal paid cannot exceed principal outstanding on that date.
 - The date cannot precede the pledge date, be in the future, or precede the latest existing payment.
 - A cap violation rejects the entire receipt.
@@ -61,7 +62,7 @@ The append-only edit log records each changed field separately, with a shared ed
 
 ## Dates
 
-API dates are Bikram Sambat (BS) `YYYY-MM-DD`; database date fields contain Gregorian dates. `backend/pledges/bs_dates.py` is the only calendar-conversion module and uses the pinned `nepali-datetime` dependency, which supports BS years 1975–2100. Invalid or unsupported dates are rejected with a clear validation error. Interest and model logic use Gregorian dates only.
+API dates are Bikram Sambat (BS) `YYYY-MM-DD`; database date fields contain Gregorian dates. `backend/pledges/bs_dates.py` is the only calendar-conversion and elapsed-day module and uses the pinned `nepali-datetime` dependency, which supports BS years 1975–2100. Invalid or unsupported dates are rejected with a clear validation error. Calendar dates continue to display normally in BS; all interest elapsed-day calculations use the shared 30/360 counter.
 
 ## Permissions
 

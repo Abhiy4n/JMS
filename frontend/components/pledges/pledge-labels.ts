@@ -22,6 +22,8 @@ export const PLEDGE_LABELS = {
   closing: "Closing…",
   close: "Close pledge",
   cannotEdit: (status: string) => `This pledge is ${status} and cannot be edited.`,
+  runningFor: (duration: string) => `Running for ${duration}`,
+  ranFor: (duration: string) => `Ran for ${duration}`,
   outstandingBalance: "Outstanding balance",
   outstandingPrincipal: "Outstanding principal",
   unpaidInterest: "Unpaid interest",
@@ -42,6 +44,11 @@ export const PLEDGE_LABELS = {
   totalInterest: "Total interest",
   upfront: "Upfront",
   paused: "Paused",
+  monthEndExtra: "Month-end extra",
+  monthEndSummary: (ordinal: string, days: number, amount: string, payableToday: string) =>
+    `Today is the ${ordinal}. Paying interest today adds ${days} extra ${days === 1 ? "day" : "days"} (${amount}), so the amount payable today is ${payableToday}.`,
+  monthEndPaymentNote: (days: number) =>
+    `Includes ${days} extra ${days === 1 ? "day" : "days"} (month-end).`,
   principalPaymentMarker: (date: string, amount: string, balance: string) =>
     `${date}: principal paid ${amount}, new principal ${balance}`,
   payment: "Payment",

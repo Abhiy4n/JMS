@@ -17,10 +17,12 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
   const [interestPercentage, setInterestPercentage] = useState(source?.interest_percentage ?? (source ? "" : "2"));
   const [interestAmount, setInterestAmount] = useState(source?.interest_amount ?? "");
   const [days, setDays] = useState(source?.days?.toString() ?? (source ? "" : "30"));
+  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const panelRef = useRef<HTMLElement>(null);
   useDialog(panelRef, onClose, saving);
+  const requiresReason = Boolean(source && sourceType !== source.source_type);
 
   function changeSourceType(nextType: CustomerType) {
     setSourceType(nextType);
@@ -54,6 +56,7 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
     if (sourceType === "INDIVIDUAL" && !interestPercentage) { setError("Enter an interest rate."); return; }
     if (sourceType === "COMPANY" && !interestPercentage) { setError("Enter an interest rate."); return; }
     if (sourceType === "DYNAMIC" && (!interestType || !days || (interestType === "PERCENTAGE" ? !interestPercentage : !interestAmount))) { setError("Complete the Dynamic interest configuration."); return; }
+    if (requiresReason && reason.trim().length < 5) { setError("Enter a reason of at least 5 characters when changing the source type."); return; }
     setSaving(true); setError("");
     try {
       const payload: NewBusinessSource = {
@@ -68,6 +71,7 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
         interest_percentage: (sourceType !== "DYNAMIC" || interestType === "PERCENTAGE") ? interestPercentage : null,
         interest_amount: sourceType === "DYNAMIC" && interestType === "FIXED_AMOUNT" ? interestAmount : null,
         days: days ? Number(days) : null,
+        ...(source && { reason: reason.trim() }),
       };
       if (source) await updateBusinessSource(source.id, payload);
       else await createBusinessSource(payload);
@@ -82,6 +86,7 @@ export default function BusinessSourceDialog({ source, onClose, onCreated }: { s
       <form className="form-stack business-source-form" onSubmit={submit}>
         <label className="form-field business-source-full-field"><span>Name <b>*</b></span><input required maxLength={255} placeholder="Business source name" value={name} onChange={(event) => setName(event.target.value)} /></label>
         <div className="form-field"><span id="source-type-label">Source type <b>*</b></span><Select aria-labelledby="source-type-label" value={sourceType} options={CUSTOMER_TYPES.map((kind) => ({ value: kind, label: kind === "DYNAMIC" ? "Dynamic" : CUSTOMER_TYPE_LABELS[kind] }))} onChange={changeSourceType} /></div>
+        {requiresReason && <label className="form-field business-source-full-field"><span>Reason for changing source type <b>*</b></span><textarea required minLength={5} maxLength={500} placeholder="Explain why the source type is changing" value={reason} onChange={(event) => setReason(event.target.value)} rows={2} /><small>At least 5 characters are required because this changes the pledge terms.</small></label>}
         <label className="form-field"><span>Phone Number {sourceType !== "COMPANY" && <b>*</b>}</span><input type="tel" required={sourceType !== "COMPANY"} inputMode="numeric" pattern="[0-9]{9,10}" minLength={9} maxLength={10} placeholder={sourceType === "COMPANY" ? "Optional phone number" : "9 or 10 digit number"} value={phone} onChange={(event) => { setPhone(event.target.value.replace(/[^0-9]/g, "").slice(0, 10)); setError(""); }} autoComplete="tel" title="Enter a phone number with 9 or 10 digits." aria-describedby="business-source-phone-help" /><small id="business-source-phone-help">Use 9 or 10 digits when provided.</small></label>
         {sourceType !== "INDIVIDUAL" && <label className="form-field"><span>PAN/VAT Number {sourceType === "COMPANY" && <b>*</b>}</span><input required={sourceType === "COMPANY"} maxLength={32} value={panVat} onChange={(event) => setPanVat(event.target.value)} /></label>}
         {sourceType === "INDIVIDUAL" && <>

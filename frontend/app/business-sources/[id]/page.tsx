@@ -162,6 +162,7 @@ export default function BusinessSourceDetailPage() {
                     <th scope="col">Pledge</th>
                     <th scope="col">Customer</th>
                     <th scope="col">Date</th>
+                    <th scope="col">Duration</th>
                     <th scope="col">Principal Due</th>
                     <th scope="col">Interest Due</th>
                     <th scope="col">Total Due</th>
@@ -170,14 +171,15 @@ export default function BusinessSourceDetailPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={7} className="table-message">Loading pledges...</td></tr>
+                    <tr><td colSpan={8} className="table-message">Loading pledges...</td></tr>
                   ) : pledges.length === 0 ? (
-                    <tr><td colSpan={7} className="table-message">No pledges for this source.</td></tr>
+                    <tr><td colSpan={8} className="table-message">No pledges for this source.</td></tr>
                   ) : pledges.map((pledge) => (
                     <tr key={pledge.id}>
                       <td><Link className="source-name-link" href={`/pledges/${pledge.id}/form`}>{pledge.pledge_number}</Link></td>
                       <td>{pledge.customer_name}</td>
                       <td>{pledge.pledge_date}</td>
+                      <td>{pledge.age.text}</td>
                       <td className="source-account-amount">{formatMoney(pledge.calculation.outstanding_principal)}</td>
                       <td className="source-account-amount">{formatMoney(pledge.calculation.unpaid_interest)}</td>
                       <td className="source-account-amount">{formatMoney(pledge.calculation.total_outstanding)}</td>

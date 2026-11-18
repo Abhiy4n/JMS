@@ -35,6 +35,7 @@ function formatPeriod(period: PledgeInterestPeriod) {
     : `${period.start_date} – ${period.end_date}`;
   if (period.kind === "UPFRONT") return `${PLEDGE_LABELS.upfront}: ${dateRange}`;
   if (period.kind === "PAUSED") return `${PLEDGE_LABELS.paused}: ${dateRange}`;
+  if (period.kind === "MONTH_END_EXTRA") return `${PLEDGE_LABELS.monthEndExtra}: ${dateRange}`;
   return dateRange;
 }
 
@@ -167,6 +168,13 @@ function PledgeDetail() {
               </span>
             </div>
           )}
+          {currentPledge && (
+            <p className="page-description">
+              {currentPledge.status === "ACTIVE"
+                ? PLEDGE_LABELS.runningFor(currentPledge.age.text)
+                : PLEDGE_LABELS.ranFor(currentPledge.age.text)}
+            </p>
+          )}
         </div>
         <div className="pledge-detail-actions">
           {currentPledge && (
@@ -230,6 +238,16 @@ function PledgeDetail() {
             <p className="page-description">
               {PLEDGE_LABELS.asOf} {currentFinancialSummary.as_of}
             </p>
+            {currentFinancialSummary.month_end_extra && (
+              <p className="page-description">
+                {PLEDGE_LABELS.monthEndSummary(
+                  currentFinancialSummary.as_of.endsWith("-31") ? "31st" : "32nd",
+                  currentFinancialSummary.month_end_extra.days,
+                  formatMoney(currentFinancialSummary.month_end_extra.amount),
+                  formatMoney(currentFinancialSummary.month_end_extra.payable_today),
+                )}
+              </p>
+            )}
             <div className="data-table-wrap">
               <table className="data-table">
                 <thead>
