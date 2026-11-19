@@ -194,3 +194,13 @@ test("Next proxy excludes API paths from frontend authentication redirects", () 
   assert.equal(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: "/api/auth/me/" }), false);
   assert.equal(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: "/business-sources" }), true);
 });
+
+test("Next proxy allows login to repair a stale authentication marker", () => {
+  const { NextRequest } = require("next/server");
+  const { proxy } = loadTypeScript(path.resolve(__dirname, "../proxy.ts"));
+  const request = new NextRequest("http://localhost:3000/login", {
+    headers: { cookie: "jms_authenticated=1" },
+  });
+  const response = proxy(request);
+  assert.equal(response.headers.get("location"), null);
+});

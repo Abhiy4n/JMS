@@ -118,13 +118,17 @@ async function main() {
         if (await evaluate(`Boolean(${expression})`)) return;
         await pause(100);
       }
-      throw new Error(`Timed out: ${label}`);
+      const pageState = await evaluate("({url:location.href,title:document.title,text:document.body?.innerText?.slice(0,500),cookie:document.cookie,access:Boolean(localStorage.getItem('jms_access')||sessionStorage.getItem('jms_access'))})");
+      throw new Error(`Timed out: ${label}\n${JSON.stringify(pageState, null, 2)}`);
     };
     const setInput = (selector, value) => evaluate(`(()=>{const input=document.querySelector(${JSON.stringify(selector)});const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;setter.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     const requestCount = (path) => evaluate(`window.__authTest.requests.filter(request=>request.path===${JSON.stringify(path)}).length`);
 
-    await send("Page.navigate", { url: `${base}/login` });
-    await waitFor("document.querySelector('#login-email')", "login form");
+    await send("Network.setCookie", { name: "jms_authenticated", value: "1", url: base });
+    await send("Page.navigate", { url: `${base}/dashboard` });
+    await waitFor("location.pathname==='/login' && document.querySelector('#login-email')", "stale cookie recovery");
+    assert.equal(await evaluate("document.cookie.includes('jms_authenticated=1')"), false, "stale authentication marker is cleared");
+
     await setInput("#login-email", "auth@example.com");
     await setInput("#login-password", "password-123");
     await evaluate("document.querySelector('form').requestSubmit()");
@@ -144,7 +148,7 @@ async function main() {
     assert.equal(await evaluate("document.querySelector('[role=dialog] input[maxlength=\"255\"]').value"), "Unsaved source name");
 
     await evaluate("document.querySelector('[role=dialog] [aria-label=Close]').click();window.__authTest.requests=[]");
-    await evaluate("document.querySelector('a[href=\"/customers\"]').click()");
+    await evaluate("document.querySelector('form[role=\"search\"]').requestSubmit()");
     await waitFor("location.pathname==='/customers' && document.querySelector('.page-heading h1')?.textContent==='Customers'", "normal navigation");
     assert.equal(await requestCount("/api/auth/me/"), 0, "normal navigation performs no auth verification");
 
@@ -188,7 +192,7 @@ async function main() {
     await waitFor("location.pathname==='/login'", "explicit logout");
     assert.equal(await requestCount("/api/auth/logout/"), 1);
 
-    console.log("PASS: login/signup request counts, no immediate /me, one cold-load verification, focus/visibility dedupe, unsaved-state preservation, navigation request count, temporary outage behavior, controlled read retry, confirmed expiration, cross-tab removal, explicit logout, and API middleware exclusion.");
+    console.log("PASS: stale cookie recovery, login/signup request counts, no immediate /me, one cold-load verification, focus/visibility dedupe, unsaved-state preservation, navigation request count, temporary outage behavior, controlled read retry, confirmed expiration, cross-tab removal, explicit logout, and API middleware exclusion.");
     await send("Browser.close").catch(() => {});
   } finally {
     socket?.terminate();

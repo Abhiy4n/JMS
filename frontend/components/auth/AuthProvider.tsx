@@ -138,7 +138,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const accessToken = getAccessToken();
       const storedUser = getStoredUser();
       if (!accessToken) {
-        updateStatus("unauthenticated");
+        // Reconcile a stale proxy marker (for example after browser storage was
+        // cleared independently) instead of leaving the app in a redirect loop.
+        clearAuthentication();
         return;
       }
       if (storedUser) {
@@ -150,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void verifySession(true);
     }, 0);
     return () => window.clearTimeout(initialVerification);
-  }, [updateStatus, updateUser, verifySession]);
+  }, [clearAuthentication, updateStatus, updateUser, verifySession]);
 
   useEffect(() => {
     function verifyWhenActive() {

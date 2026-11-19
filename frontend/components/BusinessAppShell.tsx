@@ -10,7 +10,6 @@ import {
   Camera,
   ChevronDown,
   CircleHelp,
-  FileText,
   Gem,
   ImageUp,
   LoaderCircle,
@@ -49,7 +48,6 @@ const PROFILE_PICTURE_MAX_BYTES = 5 * 1024 * 1024;
 
 const primaryNavigation = [
   { label: "Business sources", href: "/business-sources", icon: Boxes },
-  { label: "Bills", href: "/bills", icon: FileText },
 ];
 
 const workspaceNavigation = [
@@ -314,20 +312,6 @@ export default function BusinessAppShell({ children }: { children: ReactNode }) 
             >
               <Gem aria-hidden="true" />
               <span>Pledge Records</span>
-            </Link>
-          </div>
-
-          <div className={styles.navGroup}>
-            <p className={styles.groupLabel}>REPORTS</p>
-            <Link
-              className={`${styles.navItem} ${pledgeReportActive ? styles.navItemActive : ""}`}
-              href="/pledges/report"
-              aria-current={pledgeReportActive ? "page" : undefined}
-              title={navTitle("Customer-wise Report")}
-              onClick={() => setMenuOpen(false)}
-            >
-              <FileText aria-hidden="true" />
-              <span>Customer-wise Report</span>
             </Link>
           </div>
 
